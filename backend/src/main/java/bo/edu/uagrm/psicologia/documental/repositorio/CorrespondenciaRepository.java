@@ -8,8 +8,11 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 public interface CorrespondenciaRepository extends JpaRepository<Correspondencia, Integer>, JpaSpecificationExecutor<Correspondencia> {
+
+    Optional<Correspondencia> findByCodigoIgnoreCase(String codigo);
 
     @Query(value = "select nextval('seq_correspondencia_codigo')", nativeQuery = true)
     long siguienteNumero();
