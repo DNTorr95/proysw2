@@ -13,13 +13,17 @@ import bo.edu.uagrm.psicologia.documental.dto.DocumentalDtos.DestinatarioDto;
 import bo.edu.uagrm.psicologia.documental.dto.DocumentalDtos.DestinatarioRequest;
 import bo.edu.uagrm.psicologia.documental.dto.DocumentalDtos.SeguimientoDto;
 import bo.edu.uagrm.psicologia.documental.dto.DocumentalDtos.SeguimientoRequest;
+import bo.edu.uagrm.psicologia.documental.dto.DocumentalDtos.VincularRequest;
+import bo.edu.uagrm.psicologia.documental.dto.DocumentalDtos.VinculoDto;
 import bo.edu.uagrm.psicologia.documental.modelo.Correspondencia;
 import bo.edu.uagrm.psicologia.documental.modelo.Destinatario;
 import bo.edu.uagrm.psicologia.documental.modelo.SeguimientoCorrespondencia;
+import bo.edu.uagrm.psicologia.documental.modelo.VinculoCorrespondencia;
 import bo.edu.uagrm.psicologia.documental.repositorio.ArchivoAdjuntoRepository;
 import bo.edu.uagrm.psicologia.documental.repositorio.CorrespondenciaRepository;
 import bo.edu.uagrm.psicologia.documental.repositorio.DestinatarioRepository;
 import bo.edu.uagrm.psicologia.documental.repositorio.SeguimientoCorrespondenciaRepository;
+import bo.edu.uagrm.psicologia.documental.repositorio.VinculoCorrespondenciaRepository;
 import bo.edu.uagrm.psicologia.seguridad.repositorio.UsuarioRepository;
 import bo.edu.uagrm.psicologia.seguridad.servicio.UsuarioActual;
 import jakarta.persistence.criteria.JoinType;
@@ -36,24 +40,27 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
-/** CU-05 Gestionar correspondencia institucional y CU-06 Gestionar su seguimiento. */
+/** CU-05 Gestionar correspondencia institucional y CU-06 Gestionar su seguimiento (incluye vínculos de respuesta y reiteración). */
 @Service
 public class CorrespondenciaService {
 
     private final CorrespondenciaRepository correspondencias;
     private final DestinatarioRepository destinatarios;
     private final SeguimientoCorrespondenciaRepository seguimientos;
+    private final VinculoCorrespondenciaRepository vinculos;
     private final ArchivoAdjuntoRepository archivos;
     private final UsuarioRepository usuarios;
     private final DocumentoService documentos;
     private final AuditoriaService auditoria;
 
     public CorrespondenciaService(CorrespondenciaRepository correspondencias, DestinatarioRepository destinatarios,
-                                  SeguimientoCorrespondenciaRepository seguimientos, ArchivoAdjuntoRepository archivos,
-                                  UsuarioRepository usuarios, DocumentoService documentos, AuditoriaService auditoria) {
+                                  SeguimientoCorrespondenciaRepository seguimientos, VinculoCorrespondenciaRepository vinculos,
+                                  ArchivoAdjuntoRepository archivos, UsuarioRepository usuarios, DocumentoService documentos,
+                                  AuditoriaService auditoria) {
         this.correspondencias = correspondencias;
         this.destinatarios = destinatarios;
         this.seguimientos = seguimientos;
+        this.vinculos = vinculos;
         this.archivos = archivos;
         this.usuarios = usuarios;
         this.documentos = documentos;
@@ -150,6 +157,36 @@ public class CorrespondenciaService {
         auditoria.registrar("SEGUIMIENTO", "CORRESPONDENCIA", c.getId(),
                 c.getCodigo() + ": " + anterior + " -> " + req.estado() + ". " + req.observacion().trim());
         return SeguimientoDto.de(s);
+    }
+
+    // ---------- Vínculos de respuesta y reiteración (CU-06, HU-06) ----------
+
+    @Transactional(readOnly = true)
+    public List<VinculoDto> vinculos(Integer id) {
+        buscar(id);
+        return vinculos.deOficio(id).stream().map(v -> VinculoDto.de(v, id)).toList();
+    }
+
+    /** Vincula al oficio original (id) el oficio indicado por su código, como respuesta o como reiteración. */
+    @Transactional
+    public VinculoDto vincular(Integer id, VincularRequest req) {
+        Correspondencia original = buscar(id);
+        exigirNoArchivada(original);
+        String codigo = req.codigo().trim();
+        Correspondencia otro = correspondencias.findByCodigoIgnoreCase(codigo)
+                .orElseThrow(() -> new NegocioException(HttpStatus.NOT_FOUND, "No existe un oficio con el código " + codigo));
+        if (otro.getId().equals(original.getId())) {
+            throw new NegocioException("Un oficio no puede vincularse consigo mismo");
+        }
+        if (vinculos.existeEntre(original.getId(), otro.getId())) {
+            throw new NegocioException(HttpStatus.CONFLICT,
+                    "Los oficios " + original.getCodigo() + " y " + otro.getCodigo() + " ya están vinculados");
+        }
+        VinculoCorrespondencia v = vinculos.save(new VinculoCorrespondencia(original, otro, req.tipo(),
+                usuarios.getReferenceById(UsuarioActual.id())));
+        auditoria.registrar("VINCULAR", "CORRESPONDENCIA", original.getId(),
+                original.getCodigo() + " <- " + req.tipo() + " " + otro.getCodigo());
+        return VinculoDto.de(v, original.getId());
     }
 
     // ---------- Destinatarios ----------

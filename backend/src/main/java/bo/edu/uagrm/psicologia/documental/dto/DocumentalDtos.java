@@ -4,6 +4,7 @@ import bo.edu.uagrm.psicologia.documental.modelo.ArchivoAdjunto;
 import bo.edu.uagrm.psicologia.documental.modelo.Correspondencia;
 import bo.edu.uagrm.psicologia.documental.modelo.Destinatario;
 import bo.edu.uagrm.psicologia.documental.modelo.SeguimientoCorrespondencia;
+import bo.edu.uagrm.psicologia.documental.modelo.VinculoCorrespondencia;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -55,6 +56,29 @@ public final class DocumentalDtos {
 
     public record CorrespondenciaDetalleDto(CorrespondenciaDto correspondencia, List<ArchivoDto> adjuntos,
                                             List<SeguimientoDto> seguimiento) {
+    }
+
+    // ---------- Vínculos entre oficios (HU-06) ----------
+
+    /**
+     * Vínculo visto desde un oficio. sentido = VINCULADO: el otro oficio es la respuesta o reiteración de este;
+     * sentido = ORIGINAL: el otro es el oficio original al que este responde o reitera.
+     */
+    public record VinculoDto(Integer id, VinculoCorrespondencia.Tipo tipo, String sentido, Integer idCorrespondencia,
+                             String codigo, String asunto, Correspondencia.Tipo tipoOficio, LocalDate fechaDocumento,
+                             Correspondencia.Estado estado, LocalDateTime fecha, String registradoPor) {
+        public static VinculoDto de(VinculoCorrespondencia v, Integer desdeOficio) {
+            boolean esOriginal = v.getOriginal().getId().equals(desdeOficio);
+            Correspondencia otro = esOriginal ? v.getVinculado() : v.getOriginal();
+            return new VinculoDto(v.getId(), v.getTipo(), esOriginal ? "VINCULADO" : "ORIGINAL", otro.getId(), otro.getCodigo(),
+                    otro.getAsunto(), otro.getTipo(), otro.getFechaDocumento(), otro.getEstado(), v.getFecha(),
+                    v.getUsuario().getNombreUsuario());
+        }
+    }
+
+    public record VincularRequest(
+            @NotNull(message = "El tipo de vínculo (RESPUESTA o REITERACION) es obligatorio") VinculoCorrespondencia.Tipo tipo,
+            @NotBlank(message = "Indique el código del oficio a vincular") @Size(max = 30) String codigo) {
     }
 
     public record CrearCorrespondenciaRequest(

@@ -11,6 +11,8 @@ import bo.edu.uagrm.psicologia.documental.dto.DocumentalDtos.DestinatarioDto;
 import bo.edu.uagrm.psicologia.documental.dto.DocumentalDtos.DestinatarioRequest;
 import bo.edu.uagrm.psicologia.documental.dto.DocumentalDtos.SeguimientoDto;
 import bo.edu.uagrm.psicologia.documental.dto.DocumentalDtos.SeguimientoRequest;
+import bo.edu.uagrm.psicologia.documental.dto.DocumentalDtos.VincularRequest;
+import bo.edu.uagrm.psicologia.documental.dto.DocumentalDtos.VinculoDto;
 import bo.edu.uagrm.psicologia.documental.modelo.Correspondencia;
 import bo.edu.uagrm.psicologia.documental.servicio.CorrespondenciaService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -109,6 +111,21 @@ public class CorrespondenciaController {
     @Operation(summary = "CU-06 Registrar seguimiento y cambio de estado del oficio")
     public SeguimientoDto seguimiento(@PathVariable Integer id, @Valid @RequestBody SeguimientoRequest req) {
         return servicio.registrarSeguimiento(id, req);
+    }
+
+    @GetMapping("/correspondencia/{id}/vinculos")
+    @PreAuthorize(CONSULTA)
+    @Operation(summary = "HU-06 Oficios vinculados (respuestas, reiteraciones y oficio original)")
+    public List<VinculoDto> vinculos(@PathVariable Integer id) {
+        return servicio.vinculos(id);
+    }
+
+    @PostMapping("/correspondencia/{id}/vinculos")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAuthority('GESTIONAR_CORRESPONDENCIA')")
+    @Operation(summary = "HU-06 Vincular una respuesta o reiteración (por su código) al oficio original")
+    public VinculoDto vincular(@PathVariable Integer id, @Valid @RequestBody VincularRequest req) {
+        return servicio.vincular(id, req);
     }
 
     @GetMapping("/destinatarios")
