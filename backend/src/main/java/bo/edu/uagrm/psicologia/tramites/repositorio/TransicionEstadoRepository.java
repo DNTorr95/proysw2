@@ -1,0 +1,7 @@
+package bo.edu.uagrm.psicologia.tramites.repositorio;
+
+import bo.edu.uagrm.psicologia.tramites.modelo.TransicionEstado;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface TransicionEstadoRepository extends JpaRepository<TransicionEstado, Integer> {
+}

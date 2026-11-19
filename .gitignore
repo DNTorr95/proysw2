@@ -1,0 +1,12 @@
+.env
+**/target/
+**/node_modules/
+**/dist/
+**/__pycache__/
+*.pyc
+.venv/
+.idea/
+.vscode/
+*.log
+respaldos/
+evidencias/

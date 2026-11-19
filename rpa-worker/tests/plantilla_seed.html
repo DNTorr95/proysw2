@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>{{ titulo }}</title>
+<style>
+  @page { size: Letter; margin: 2cm; }
+  body { font-family: Arial, sans-serif; font-size: 11pt; color: #222; }
+  header { border-bottom: 2px solid #1f3a68; margin-bottom: 16px; }
+  header h1 { font-size: 14pt; margin: 0; color: #1f3a68; }
+  header p { margin: 2px 0; font-size: 9pt; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 18px; }
+  th, td { border: 1px solid #999; padding: 4px 6px; text-align: left; }
+  th { background: #e8edf5; }
+  footer { font-size: 8pt; color: #666; margin-top: 24px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Universidad Autónoma Gabriel René Moreno</h1>
+  <p>Facultad de Humanidades y Ciencias de la Comunicación</p>
+  <p>Dirección de Carrera de Psicología</p>
+</header>
+<h2>{{ titulo }}</h2>
+<p><strong>Periodo:</strong> {{ periodo_desde }} al {{ periodo_hasta }}</p>
+<p><strong>Total recibidos:</strong> {{ total_recibidos }} &nbsp; <strong>Total emitidos:</strong> {{ total_emitidos }}</p>
+{{ secciones }}
+<footer>Documento generado automáticamente por el proceso RPA (ejecución {{ id_ejecucion }}) el {{ fecha_generacion }}.
+Pendiente de revisión y autorización de la Dirección de Carrera.</footer>
+</body>
+</html>

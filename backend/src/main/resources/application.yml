@@ -1,0 +1,90 @@
+spring:
+  application:
+    name: gestion-administrativa
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/proyecto25}
+    username: ${DB_USER:proyecto25}
+    password: ${DB_PASSWORD:proyecto25}
+    hikari:
+      maximum-pool-size: 20
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate      # el esquema lo gobierna Flyway; JPA solo valida el mapeo
+    properties:
+      hibernate:
+        jdbc.time_zone: America/La_Paz
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    time-zone: America/La_Paz
+    serialization:
+      write-dates-as-timestamps: false
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USER:}
+    password: ${MAIL_PASSWORD:}
+    default-encoding: UTF-8
+    properties:
+      mail.smtp.auth: ${MAIL_AUTH:false}
+      mail.smtp.starttls.enable: ${MAIL_STARTTLS:false}
+      mail.smtp.starttls.required: ${MAIL_STARTTLS:false}
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 20000
+      mail.smtp.writetimeout: 20000
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 12MB
+
+server:
+  port: 8080
+  forward-headers-strategy: framework   # respeta X-Forwarded-For de nginx
+  error:
+    include-message: never
+    include-stacktrace: never
+
+app:
+  seguridad:
+    jwt-secreto: ${JWT_SECRET:desarrollo_secreto_inseguro_cambiar_por_uno_largo_aleatorio_1234567890}
+    jwt-expiracion-horas: ${JWT_EXPIRACION_HORAS:8}
+    max-intentos-fallidos: 5
+    cors-origenes: ${CORS_ORIGENES:http://localhost,http://localhost:5173}
+  servicios:
+    clave: ${SERVICE_KEY:clave_servicio_desarrollo}
+    rpa-url: ${RPA_URL:http://localhost:8001}
+    ia-url: ${IA_URL:http://localhost:8002}
+  almacenamiento:
+    directorio: ${STORAGE_DIR:./almacenamiento}
+  correo:
+    remitente: ${MAIL_REMITENTE:direccion.psicologia@ejemplo.edu.bo}
+  rpa:
+    margen-tiempo-segundos: 15   # margen sobre tiempo_max_segundos del proceso antes de cortar la llamada
+
+springdoc:
+  api-docs:
+    path: /api/docs/openapi.json
+  swagger-ui:
+    path: /api/docs
+    operations-sorter: alpha
+    tags-sorter: alpha
+
+management:
+  health:
+    mail:
+      enabled: false   # una caída del SMTP no debe marcar al sistema como no disponible
+  endpoints:
+    web:
+      exposure:
+        include: health
+      base-path: /api/actuator
+
+logging:
+  structured:
+    format:
+      console: ${LOG_FORMATO:logstash}   # logs estructurados JSON; usar LOG_FORMATO= para texto plano
+  level:
+    root: INFO
+    bo.edu.uagrm.psicologia: INFO
