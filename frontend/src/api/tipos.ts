@@ -129,6 +129,24 @@ export interface CorrespondenciaDetalle {
   seguimiento: Seguimiento[];
 }
 
+/** HU-06: vínculo entre un oficio original y su respuesta o reiteración, visto desde un oficio. */
+export type TipoVinculo = "RESPUESTA" | "REITERACION";
+
+export interface VinculoCorrespondencia {
+  id: number;
+  tipo: TipoVinculo;
+  /** VINCULADO: el otro oficio es la respuesta/reiteración de este · ORIGINAL: el otro es el oficio original. */
+  sentido: "VINCULADO" | "ORIGINAL";
+  idCorrespondencia: number;
+  codigo: string;
+  asunto: string;
+  tipoOficio: TipoCorrespondencia;
+  fechaDocumento: string;
+  estado: EstadoCorrespondencia;
+  fecha: string;
+  registradoPor: string;
+}
+
 export interface Requisito {
   id: number;
   descripcion: string;

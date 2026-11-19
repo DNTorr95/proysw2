@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Eraser, Pencil, Plus, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Eraser, Link2, Pencil, Plus, ShieldCheck } from "lucide-react";
 import { api, subirArchivo, type Pagina } from "../api/cliente";
-import type { Correspondencia, CorrespondenciaDetalle, Destinatario, EstadoCorrespondencia } from "../api/tipos";
+import type { Correspondencia, CorrespondenciaDetalle, Destinatario, EstadoCorrespondencia, TipoVinculo, VinculoCorrespondencia } from "../api/tipos";
 import { useAuth } from "../auth/AuthContext";
 import { ListaArchivos, SubirArchivo } from "../components/documentos";
 import { Cargando, Encabezado, ErrorApiAviso, Insignia, Modal, Paginacion, formatoFechaHora } from "../components/ui";
@@ -230,9 +230,64 @@ function DetalleOficio({ id, destinatarios, onCerrar }: { id: number; destinatar
               </form>
             )}
           </section>
+          <OficiosVinculados idOficio={id} editable={tienePermiso("GESTIONAR_CORRESPONDENCIA") && !archivada} />
         </div>
       )}
       {editando && c && <FormularioOficio oficio={c} destinatarios={destinatarios} onCerrar={() => { setEditando(false); refrescar(); }} />}
     </Modal>
+  );
+}
+
+const TIPOS_VINCULO: Record<TipoVinculo, { etiqueta: string; inversa: string; color: "verde" | "ambar" }> = {
+  RESPUESTA: { etiqueta: "Respuesta", inversa: "Responde a", color: "verde" },
+  REITERACION: { etiqueta: "Reiteración", inversa: "Reitera a", color: "ambar" },
+};
+
+/** HU-06: oficios de respuesta o reiteración vinculados con el oficio original (en ambos sentidos). */
+function OficiosVinculados({ idOficio, editable }: { idOficio: number; editable: boolean }) {
+  const qc = useQueryClient();
+  const [tipo, setTipo] = useState<TipoVinculo>("RESPUESTA");
+  const [codigo, setCodigo] = useState("");
+  const lista = useQuery({
+    queryKey: ["vinculos", idOficio],
+    queryFn: () => api<VinculoCorrespondencia[]>(`/correspondencia/${idOficio}/vinculos`),
+  });
+  const vincular = useMutation({
+    mutationFn: () => api<VinculoCorrespondencia>(`/correspondencia/${idOficio}/vinculos`, { metodo: "POST", cuerpo: { tipo, codigo: codigo.trim() } }),
+    onSuccess: () => { setCodigo(""); qc.invalidateQueries({ queryKey: ["vinculos"] }); },
+  });
+  return (
+    <section>
+      <h3 className="mb-2 font-semibold">Oficios vinculados</h3>
+      {lista.isLoading ? <Cargando /> : lista.error ? <ErrorApiAviso error={lista.error} /> : lista.data?.length ? (
+        <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
+          {lista.data.map((v) => {
+            const t = TIPOS_VINCULO[v.tipo];
+            return (
+              <li key={v.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+                <Insignia color={t.color}>{v.sentido === "VINCULADO" ? t.etiqueta : t.inversa}</Insignia>
+                <span className="font-medium text-marca-700">{v.codigo}</span>
+                <span className="min-w-0 flex-1">{v.asunto}</span>
+                <span className="text-xs text-slate-500">
+                  {v.tipoOficio === "RECIBIDA" ? "Recibida" : "Emitida"} del {formatoFecha(v.fechaDocumento)} · vinculado {formatoFechaHora(v.fecha)} por {v.registradoPor}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : <p className="text-sm text-slate-500">Sin oficios vinculados.</p>}
+      {editable && (
+        <form className="mt-3 grid gap-3 rounded-md border border-slate-200 p-3 sm:grid-cols-4" onSubmit={(e) => { e.preventDefault(); vincular.mutate(); }}>
+          <div className="sm:col-span-4"><ErrorApiAviso error={vincular.error} /></div>
+          <select className="campo" value={tipo} onChange={(e) => setTipo(e.target.value as TipoVinculo)} aria-label="Tipo de vínculo">
+            <option value="RESPUESTA">Respuesta</option>
+            <option value="REITERACION">Reiteración</option>
+          </select>
+          <input className="campo sm:col-span-2" placeholder="Código del oficio (p. ej. DCP-EMI-2026-0001)" maxLength={30} value={codigo}
+            onChange={(e) => setCodigo(e.target.value)} aria-label="Código del oficio a vincular" />
+          <button className="btn-primario" disabled={!codigo.trim() || vincular.isPending}><Link2 className="h-4 w-4" /> Vincular</button>
+        </form>
+      )}
+    </section>
   );
 }
