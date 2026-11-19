@@ -15,6 +15,12 @@ export interface SeccionMenu {
   opciones: OpcionMenu[];
 }
 
+/**
+ * Permisos que dan acceso a /busqueda. CONSULTAR_FILTROS habilita la búsqueda avanzada, igual que en el
+ * backend (GET /api/busqueda); sin él, el Apoyo Profesional no podía abrir la pantalla (HU-22).
+ */
+export const PERMISOS_BUSQUEDA = ["BUSQUEDA_AVANZADA", "CONSULTAR_FILTROS", "BUSQUEDA_SEMANTICA", "USAR_ASISTENTE"];
+
 export const MENU: SeccionMenu[] = [
   {
     titulo: "General",
@@ -51,7 +57,7 @@ export const MENU: SeccionMenu[] = [
     titulo: "Inteligencia y reportes",
     opciones: [
       { ruta: "/ocr", etiqueta: "OCR", icono: "ScanText", permisos: ["PROCESAR_OCR", "VALIDAR_OCR"], disponible: true },
-      { ruta: "/busqueda", etiqueta: "Búsqueda y asistente", icono: "Search", permisos: ["BUSQUEDA_AVANZADA", "BUSQUEDA_SEMANTICA", "USAR_ASISTENTE"], disponible: true },
+      { ruta: "/busqueda", etiqueta: "Búsqueda y asistente", icono: "Search", permisos: PERMISOS_BUSQUEDA, disponible: true },
       { ruta: "/alertas", etiqueta: "Alertas", icono: "BellRing", permisos: ["CONSULTAR_ALERTAS", "ATENDER_ALERTAS"], disponible: true },
       { ruta: "/reportes", etiqueta: "Reportes", icono: "BarChart3", permisos: ["GENERAR_REPORTES"], disponible: true },
     ],

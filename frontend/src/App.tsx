@@ -28,6 +28,7 @@ import ReportesPage from "./pages/reportes/ReportesPage";
 import OcrPage from "./pages/reportes/OcrPage";
 import BusquedaPage from "./pages/reportes/BusquedaPage";
 import { useAuth } from "./auth/AuthContext";
+import { PERMISOS_BUSQUEDA } from "./lib/menu";
 
 /** CU-26: quien tiene VER_DASHBOARD ve los indicadores como página de inicio. */
 function Inicio() {
@@ -68,7 +69,7 @@ export default function App() {
         <Route path="eventos" element={<RutaProtegida permisos={["GESTIONAR_EVENTOS", "CONSULTAR_INSTITUCIONAL", "CONSULTAR_POA"]}><EventosPage /></RutaProtegida>} />
         <Route path="autoridad" element={<RutaProtegida permisos={["TRANSFERIR_AUTORIDAD"]}><TransferenciaAutoridadPage /></RutaProtegida>} />
         <Route path="ocr" element={<RutaProtegida permisos={["PROCESAR_OCR", "VALIDAR_OCR"]}><OcrPage /></RutaProtegida>} />
-        <Route path="busqueda" element={<RutaProtegida permisos={["BUSQUEDA_AVANZADA", "BUSQUEDA_SEMANTICA", "USAR_ASISTENTE"]}><BusquedaPage /></RutaProtegida>} />
+        <Route path="busqueda" element={<RutaProtegida permisos={PERMISOS_BUSQUEDA}><BusquedaPage /></RutaProtegida>} />
         <Route path="alertas" element={<RutaProtegida permisos={["CONSULTAR_ALERTAS", "ATENDER_ALERTAS"]}><AlertasPage /></RutaProtegida>} />
         <Route path="reportes" element={<RutaProtegida permisos={["GENERAR_REPORTES"]}><ReportesPage /></RutaProtegida>} />
         <Route path="*" element={<NoEncontrado />} />
