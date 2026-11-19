@@ -11,7 +11,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Modelo multilingüe descargado en la construcción: el contenedor no necesita Internet en ejecución
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')"
 COPY app ./app
-RUN useradd -r -u 1002 ia && chmod -R a+rX /opt/modelos
+# Grupo 1001 = grupo del volumen documental (backend y rpa-worker). El backend guarda los archivos
+# con 0640, así que el OCR los lee por pertenecer al grupo, sin abrirlos a otros usuarios (HU-21).
+RUN groupadd -g 1001 documentos \
+    && useradd -r -u 1002 -G documentos ia \
+    && chmod -R a+rX /opt/modelos
 USER ia
 EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 \
