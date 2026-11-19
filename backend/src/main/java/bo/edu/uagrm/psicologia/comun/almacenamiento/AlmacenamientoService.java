@@ -13,12 +13,15 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -32,6 +35,9 @@ import java.util.zip.ZipInputStream;
 public class AlmacenamientoService {
 
     public static final long TAMANO_MAXIMO = 10L * 1024 * 1024;
+
+    /** Permisos de los archivos guardados: lectura y escritura del dueño, lectura del grupo (0640). */
+    public static final Set<PosixFilePermission> PERMISOS_ARCHIVO = Set.copyOf(PosixFilePermissions.fromString("rw-r-----"));
 
     /** Extensión permitida -> tipo MIME canónico. */
     static final Map<String, String> TIPOS = Map.of(
@@ -93,6 +99,7 @@ public class AlmacenamientoService {
             Files.createDirectories(destino.getParent());
             Path temporal = Files.createTempFile(destino.getParent(), "subida-", ".tmp");
             Files.write(temporal, contenido);
+            aplicarPermisos(temporal);
             Files.move(temporal, destino, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             throw new UncheckedIOException("No se pudo guardar el archivo", e);
@@ -130,6 +137,17 @@ public class AlmacenamientoService {
 
     public Path directorioBase() {
         return base;
+    }
+
+    /**
+     * createTempFile crea el archivo con 0600 y ATOMIC_MOVE conserva ese permiso, por lo que los
+     * servicios inteligentes (otro usuario, mismo grupo del volumen) no podían leerlo para el OCR.
+     * Se deja lectura para el grupo y ningún permiso para otros (0640). En sistemas sin POSIX no aplica.
+     */
+    private static void aplicarPermisos(Path archivo) throws IOException {
+        if (archivo.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+            Files.setPosixFilePermissions(archivo, PERMISOS_ARCHIVO);
+        }
     }
 
     /** Resuelve una ruta relativa impidiendo salir del volumen (path traversal). */
