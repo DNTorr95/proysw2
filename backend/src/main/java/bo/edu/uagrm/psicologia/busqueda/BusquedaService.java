@@ -104,7 +104,7 @@ public class BusquedaService {
             List<ArchivoAdjunto> docs = consulta("""
                     select a from ArchivoAdjunto a
                     where (lower(a.nombreArchivo) like :p or lower(coalesce(a.descripcion, '')) like :p
-                           or a.id in (select e.idArchivo from ExtraccionOcr e where lower(e.textoExtraido) like :p))
+                           or a.id in (select e.idArchivo from ExtraccionOcr e where e.validado = true and lower(e.textoExtraido) like :p))
                       and cast(a.fechaCarga as LocalDate) between :d and :h order by a.fechaCarga desc
                     """, ArchivoAdjunto.class, patron, d, h);
             Map<Integer, ExtraccionOcr> ocr = ocrDe(docs.stream().map(ArchivoAdjunto::getId).toList());
@@ -143,7 +143,8 @@ public class BusquedaService {
                         c.getAsunto() + ". " + nz(c.getDescripcion()) + ". " + c.getDestinatario().getUnidad())));
         em.createQuery("select t from Tramite t join fetch t.tipoTramite", Tramite.class).getResultList()
                 .forEach(t -> docs.add(Map.of("id", "TRAM-" + t.getId(), "texto", t.getTipoTramite().getNombre() + ". " + nz(t.getObservaciones()))));
-        Map<Integer, ExtraccionOcr> ocr = em.createQuery("select e from ExtraccionOcr e", ExtraccionOcr.class).getResultList()
+        // Solo el texto OCR revisado y validado por una persona (CU-22) entra en el índice
+        Map<Integer, ExtraccionOcr> ocr = em.createQuery("select e from ExtraccionOcr e where e.validado = true", ExtraccionOcr.class).getResultList()
                 .stream().collect(Collectors.toMap(ExtraccionOcr::getIdArchivo, Function.identity()));
         em.createQuery("select a from ArchivoAdjunto a", ArchivoAdjunto.class).getResultList()
                 .forEach(a -> docs.add(Map.of("id", "DOC-" + a.getId(), "texto", a.getNombreArchivo() + ". " + nz(a.getDescripcion()) + ". "
@@ -246,8 +247,11 @@ public class BusquedaService {
 
     private static ResultadoDto deDocumento(ArchivoAdjunto a, ExtraccionOcr ocr, String consulta, Double r) {
         String detalle = nz(a.getDescripcion());
-        if (ocr != null) {
-            detalle = (ocr.isValidado() ? "OCR validado: " : "OCR sin validar: ") + fragmento(ocr.getTextoExtraido(), consulta);
+        if (ocr != null && ocr.isValidado()) {
+            detalle = "OCR validado: " + fragmento(ocr.getTextoExtraido(), consulta);
+        } else if (ocr != null) {
+            // El texto sin validar no se expone en la búsqueda (CU-22)
+            detalle = (detalle.isEmpty() ? "" : detalle + " · ") + "OCR pendiente de validación";
         }
         return new ResultadoDto("DOCUMENTO", a.getId(), a.getNombreArchivo(), detalle, a.getFechaCarga().toLocalDate(),
                 "/documentos?id=" + a.getId(), r);
