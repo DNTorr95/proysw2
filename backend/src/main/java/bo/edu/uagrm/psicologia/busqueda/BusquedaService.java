@@ -33,6 +33,9 @@ import java.util.stream.Collectors;
 /**
  * CU-23 Búsqueda avanzada (consultas con filtros sobre la base) y CU-24 Búsqueda semántica
  * (servicios-ia devuelve ids y relevancia; el backend carga las entidades y FILTRA POR PERMISOS).
+ *
+ * La semántica usa los vectores guardados en PostgreSQL con pgvector ({@link IndiceVectorial}); si servicios-ia
+ * trabaja con TF-IDF (sin vectores de dimensión fija) se usa su índice en memoria.
  */
 @Service
 public class BusquedaService {
@@ -44,11 +47,13 @@ public class BusquedaService {
     private final EntityManager em;
     private final ClienteServiciosIa ia;
     private final AuditoriaService auditoria;
+    private final IndiceVectorial vectorial;
 
-    public BusquedaService(EntityManager em, ClienteServiciosIa ia, AuditoriaService auditoria) {
+    public BusquedaService(EntityManager em, ClienteServiciosIa ia, AuditoriaService auditoria, IndiceVectorial vectorial) {
         this.em = em;
         this.ia = ia;
         this.auditoria = auditoria;
+        this.vectorial = vectorial;
     }
 
     public record ResultadoDto(String tipo, Integer id, String titulo, String detalle, LocalDate fecha, String ruta, Double relevancia) {
@@ -155,13 +160,15 @@ public class BusquedaService {
 
     public int reindexar() {
         List<Map<String, String>> docs = corpus();
+        IndiceVectorial.Sincronizacion s = vectorial.sincronizar(docs);
+        if (s != null) return s.indexados();
         JsonNode r = ia.post("/interno/busqueda/indice", Map.of("documentos", docs));
         int n = r.path("indexados").asInt();
         log.info("indice semantico regenerado documentos={} motor={}", n, r.path("motor").asText());
         return n;
     }
 
-    /** Reindexación nocturna (el índice vive en memoria del servicio inteligente). */
+    /** Reindexación nocturna: recalcula los vectores de lo que cambió (o regenera el índice en memoria con TF-IDF). */
     @Scheduled(cron = "0 30 2 * * *")
     public void reindexarProgramado() {
         try {
@@ -176,20 +183,32 @@ public class BusquedaService {
         if (consulta == null || consulta.trim().length() < 3) throw new NegocioException("Escriba al menos 3 caracteres");
         UsuarioAutenticado u = UsuarioActual.obtener();
         List<String> permitidos = tiposPermitidos(u, tipos);
-        Map<String, Object> cuerpo = Map.of("consulta", consulta.trim(), "limite", 60);
-        JsonNode r;
-        try {
-            r = ia.post("/interno/busqueda", cuerpo);
-        } catch (ClienteServiciosIa.RespuestaIa e) {
-            if (e.getCodigo() != 409) throw e;
-            reindexar();                       // índice vacío (p. ej. el servicio se reinició)
-            r = ia.post("/interno/busqueda", cuerpo);
-        }
         Map<String, Double> relevancia = new LinkedHashMap<>();
-        r.path("resultados").forEach(n -> relevancia.put(n.path("id").asText(), n.path("relevancia").asDouble()));
+        String motor;
+        IndiceVectorial.Coincidencias v = vectorial.buscar(consulta.trim(), 60);
+        if (v != null && v.indiceVacio()) {
+            reindexar();                       // primera búsqueda o cambio de modelo: se calculan los vectores
+            v = vectorial.buscar(consulta.trim(), 60);
+        }
+        if (v != null) {
+            relevancia.putAll(v.relevancia());
+            motor = v.motor() + " · pgvector";
+        } else {
+            Map<String, Object> cuerpo = Map.of("consulta", consulta.trim(), "limite", 60);
+            JsonNode r;
+            try {
+                r = ia.post("/interno/busqueda", cuerpo);
+            } catch (ClienteServiciosIa.RespuestaIa e) {
+                if (e.getCodigo() != 409) throw e;
+                reindexar();                       // índice vacío (p. ej. el servicio se reinició)
+                r = ia.post("/interno/busqueda", cuerpo);
+            }
+            r.path("resultados").forEach(n -> relevancia.put(n.path("id").asText(), n.path("relevancia").asDouble()));
+            motor = r.path("motor").asText();
+        }
         List<ResultadoDto> res = cargar(relevancia, permitidos, consulta.trim());
         auditoria.registrar("BUSQUEDA_SEMANTICA", "BUSQUEDA", null, "\"" + consulta.trim() + "\" · " + res.size() + " resultado(s) visibles");
-        return new RespuestaBusqueda(res, permitidos, r.path("motor").asText());
+        return new RespuestaBusqueda(res, permitidos, motor);
     }
 
     /** Carga las entidades devueltas por el servicio, descartando las que el usuario no puede ver. */
