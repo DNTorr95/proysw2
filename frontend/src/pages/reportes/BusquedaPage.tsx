@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Bot, FileText, FolderSearch, GraduationCap, Mail, Search, Send, Sparkles } from "lucide-react";
+import { Bot, DatabaseZap, FileText, FolderSearch, GraduationCap, Mail, Search, Send, Sparkles } from "lucide-react";
 import { api } from "../../api/cliente";
 import type { RespuestaAsistente, RespuestaBusqueda, ResultadoBusqueda } from "../../api/tipos";
 import { useAuth } from "../../auth/AuthContext";
@@ -26,6 +26,7 @@ export default function BusquedaPage() {
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
 
+  const reindexar = useMutation({ mutationFn: () => api<{ indexados: number }>("/busqueda/indice", { metodo: "POST" }) });
   const buscar = useMutation({
     mutationFn: () => modo === "avanzada"
       ? api<RespuestaBusqueda>("/busqueda", { params: { texto, tipos: tipos.join(",") || undefined, desde, hasta } })
@@ -44,7 +45,17 @@ export default function BusquedaPage() {
               {puedeAvanzada && <button type="button" role="tab" aria-selected={modo === "avanzada"} className={modo === "avanzada" ? "btn-primario" : "btn-secundario"} onClick={() => { setModo("avanzada"); buscar.reset(); }}><Search className="h-4 w-4" /> Avanzada</button>}
               {puedeSemantica && <button type="button" role="tab" aria-selected={modo === "semantica"} className={modo === "semantica" ? "btn-primario" : "btn-secundario"} onClick={() => { setModo("semantica"); buscar.reset(); }}><Sparkles className="h-4 w-4" /> Semántica</button>}
             </div>
-            <p className="text-xs text-slate-500">{modo === "avanzada" ? "Coincidencia de palabras con filtros por tipo y fecha." : "Busca por significado: encuentra documentos relacionados aunque no usen las mismas palabras."}</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-slate-500">{modo === "avanzada" ? "Coincidencia de palabras con filtros por tipo y fecha." : "Busca por significado: encuentra documentos relacionados aunque no usen las mismas palabras."}</p>
+              {modo === "semantica" && (
+                <button type="button" className="btn-secundario px-2 py-1 text-xs" disabled={reindexar.isPending} onClick={() => reindexar.mutate()}
+                  title="Vuelve a indexar los textos (se hace solo cada noche); útil tras cargar muchos documentos o validar OCR">
+                  <DatabaseZap className="h-3.5 w-3.5" /> {reindexar.isPending ? "Actualizando índice…" : "Actualizar índice"}
+                </button>
+              )}
+            </div>
+            {modo === "semantica" && <ErrorApiAviso error={reindexar.error} />}
+            {modo === "semantica" && reindexar.data && <Aviso tipo="exito">Índice semántico actualizado: {reindexar.data.indexados} texto(s) indexados.</Aviso>}
             <div className="flex gap-2">
               <input className="campo" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder={modo === "avanzada" ? "Código, asunto, número de trámite, estudiante…" : "Ej.: estrés de los estudiantes en exámenes"} aria-label="Texto de búsqueda" />
               <button className="btn-primario" disabled={texto.trim().length < 2 || buscar.isPending}><Search className="h-4 w-4" /> Buscar</button>
