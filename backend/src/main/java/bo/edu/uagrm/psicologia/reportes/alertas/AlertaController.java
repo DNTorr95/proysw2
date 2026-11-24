@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /** CU-28 Alertas administrativas y predictivas · CU-29 Análisis predictivo · CU-30 Atención de alertas. */
 @RestController
@@ -73,8 +74,16 @@ public class AlertaController {
 
     @PostMapping("/prediccion/analisis")
     @PreAuthorize("hasAuthority('ANALISIS_PREDICTIVO')")
-    @Operation(summary = "CU-29 Entrenar con el histórico y estimar el riesgo de demora de los trámites en curso")
-    public PrediccionService.AnalisisDto analizar() {
-        return prediccion.analizar();
+    @Operation(summary = "CU-29 Estimar el riesgo de demora de los trámites en curso con el modelo vigente "
+            + "(reentrenar=true entrena una versión nueva con el histórico)")
+    public PrediccionService.AnalisisDto analizar(@RequestParam(defaultValue = "false") boolean reentrenar) {
+        return prediccion.analizar(reentrenar);
+    }
+
+    @GetMapping("/prediccion/modelos")
+    @PreAuthorize("hasAuthority('ANALISIS_PREDICTIVO')")
+    @Operation(summary = "CU-29 Versiones del modelo predictivo (fecha, ejemplos, exactitud, SHA-256 y vigente)")
+    public List<PrediccionService.ModeloDto> modelos() {
+        return prediccion.modelos();
     }
 }
