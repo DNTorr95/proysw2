@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { LineChart, Plus } from "lucide-react";
+import { FilePlus2, LineChart, Pencil, Plus } from "lucide-react";
 import { api } from "../../api/cliente";
 import type { ActividadPoa, Evento, PoaResumen, SeguimientoActividad } from "../../api/tipos";
 import { useAuth } from "../../auth/AuthContext";
@@ -28,17 +28,23 @@ export default function PoaPage() {
   const poa = useQuery({ queryKey: ["poa", gestion], queryFn: () => api<{ poa: PoaResumen; actividades: ActividadPoa[] }>(`/poa/${gestion}`), enabled: gestion !== null });
   const [seguir, setSeguir] = useState<ActividadPoa | null>(null);
   const [nueva, setNueva] = useState(false);
+  const [editarActividad, setEditarActividad] = useState<ActividadPoa | null>(null);
+  const [formPoa, setFormPoa] = useState<"nuevo" | "editar" | null>(null);
   const refrescar = () => { qc.invalidateQueries({ queryKey: ["poa"] }); qc.invalidateQueries({ queryKey: ["poas"] }); };
   const p = poa.data?.poa;
 
   return (
     <>
       <Encabezado titulo="Plan Operativo Anual" descripcion="Seguimiento del avance de las actividades del POA"
-        acciones={<select className="campo" value={gestion ?? ""} onChange={(e) => setGestion(Number(e.target.value))} aria-label="Gestión">{poas.data?.map((x) => <option key={x.id} value={x.gestion}>POA {x.gestion}</option>)}</select>} />
-      {poa.isLoading || !p ? <Cargando /> : (
+        acciones={<>
+          {poas.data && poas.data.length > 0 && <select className="campo" value={gestion ?? ""} onChange={(e) => setGestion(Number(e.target.value))} aria-label="Gestión">{poas.data.map((x) => <option key={x.id} value={x.gestion}>POA {x.gestion}</option>)}</select>}
+          {gestiona && p && <button className="btn-secundario" onClick={() => setFormPoa("editar")}><Pencil className="h-4 w-4" /> Editar POA</button>}
+          {gestiona && <button className="btn-primario" onClick={() => setFormPoa("nuevo")}><FilePlus2 className="h-4 w-4" /> Nuevo POA</button>}
+        </>} />
+      {poas.data?.length === 0 ? <div className="tarjeta p-6 text-sm text-slate-600">Todavía no hay un POA registrado.</div> : poa.isLoading || !p ? <Cargando /> : (
         <>
           <div className="mb-6 grid gap-4 md:grid-cols-4">
-            <div className="tarjeta p-4 md:col-span-2"><p className="text-xs uppercase text-slate-500">Objetivo</p><p className="mt-1 text-sm">{p.objetivo}</p></div>
+            <div className="tarjeta p-4 md:col-span-2"><p className="text-xs uppercase text-slate-500">Objetivo · {p.estado.replace("_", " ").toLowerCase()}</p><p className="mt-1 text-sm">{p.objetivo}</p></div>
             <div className="tarjeta p-4"><p className="text-xs uppercase text-slate-500">Avance global</p><p className="mt-1 text-2xl font-semibold">{Number(p.avance).toFixed(1)} %</p><Barra valor={Number(p.avance)} /></div>
             <div className="tarjeta p-4 text-sm"><p className="text-xs uppercase text-slate-500">Actividades</p><p className="mt-1">{p.actividades} en total</p><p className="text-green-700">{p.concluidas} concluidas</p><p className="text-red-700">{p.retrasadas} retrasadas</p></div>
           </div>
@@ -57,7 +63,10 @@ export default function PoaPage() {
                     <td className="whitespace-nowrap text-xs">{formatoFecha(a.fechaInicio)} – {formatoFecha(a.fechaFin)}</td>
                     <td><Barra valor={Number(a.avance)} /></td>
                     <td><Insignia color={ESTADO_ACT[a.estado as keyof typeof ESTADO_ACT]}>{a.estado.replace("_", " ").toLowerCase()}</Insignia></td>
-                    <td className="text-right"><button className="btn-secundario px-2 py-1 text-xs" onClick={() => setSeguir(a)}><LineChart className="h-3.5 w-3.5" /> Seguimiento</button></td>
+                    <td className="text-right"><div className="flex justify-end gap-1">
+                      {gestiona && p.estado !== "CERRADO" && <button className="btn-secundario px-2 py-1 text-xs" onClick={() => setEditarActividad(a)} aria-label={`Editar ${a.descripcion}`}><Pencil className="h-3.5 w-3.5" /> Editar</button>}
+                      <button className="btn-secundario px-2 py-1 text-xs" onClick={() => setSeguir(a)}><LineChart className="h-3.5 w-3.5" /> Seguimiento</button>
+                    </div></td>
                   </tr>
                 ))}
               </tbody>
@@ -66,7 +75,8 @@ export default function PoaPage() {
         </>
       )}
       {seguir && <Seguimiento actividad={seguir} gestiona={gestiona} onCerrar={() => { setSeguir(null); refrescar(); }} />}
-      {nueva && p && <NuevaActividad idPoa={p.id} gestion={p.gestion} onCerrar={() => { setNueva(false); refrescar(); }} />}
+      {(nueva || editarActividad) && p && <FormActividad idPoa={p.id} gestion={p.gestion} actividad={editarActividad ?? undefined} onCerrar={() => { setNueva(false); setEditarActividad(null); refrescar(); }} />}
+      {formPoa && <FormPoa poa={formPoa === "editar" ? p : undefined} onCerrar={(g) => { setFormPoa(null); refrescar(); if (g) setGestion(g); }} />}
     </>
   );
 }
@@ -112,12 +122,21 @@ function Seguimiento({ actividad, gestiona, onCerrar }: { actividad: ActividadPo
   );
 }
 
-function NuevaActividad({ idPoa, gestion, onCerrar }: { idPoa: number; gestion: number; onCerrar: () => void }) {
-  const [f, setF] = useState({ descripcion: "", meta: "", responsable: "", fechaInicio: `${gestion}-01-02`, fechaFin: `${gestion}-12-15` });
-  const m = useMutation({ mutationFn: () => api(`/poa/${idPoa}/actividades`, { metodo: "POST", cuerpo: f }), onSuccess: onCerrar });
+/** Crear (POST /poa/{id}/actividades) o editar (PUT /actividades-poa/{id}) una actividad del POA. */
+function FormActividad({ idPoa, gestion, actividad, onCerrar }: { idPoa: number; gestion: number; actividad?: ActividadPoa; onCerrar: () => void }) {
+  const [f, setF] = useState({
+    descripcion: actividad?.descripcion ?? "", meta: actividad?.meta ?? "", responsable: actividad?.responsable ?? "",
+    fechaInicio: actividad?.fechaInicio ?? `${gestion}-01-02`, fechaFin: actividad?.fechaFin ?? `${gestion}-12-15`,
+  });
+  const m = useMutation({
+    mutationFn: () => actividad
+      ? api(`/actividades-poa/${actividad.id}`, { metodo: "PUT", cuerpo: f })
+      : api(`/poa/${idPoa}/actividades`, { metodo: "POST", cuerpo: f }),
+    onSuccess: onCerrar,
+  });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
   return (
-    <Modal abierto titulo={`Nueva actividad del POA ${gestion}`} onCerrar={onCerrar}>
+    <Modal abierto titulo={actividad ? "Editar actividad del POA" : `Nueva actividad del POA ${gestion}`} onCerrar={onCerrar}>
       <div className="space-y-3">
         <ErrorApiAviso error={m.error} />
         <div><label className="etiqueta" htmlFor="ad">Descripción</label><input id="ad" className="campo" value={f.descripcion} onChange={set("descripcion")} /></div>
@@ -127,8 +146,36 @@ function NuevaActividad({ idPoa, gestion, onCerrar }: { idPoa: number; gestion: 
           <div><label className="etiqueta" htmlFor="ai">Inicio</label><input id="ai" type="date" className="campo" value={f.fechaInicio} onChange={set("fechaInicio")} /></div>
           <div><label className="etiqueta" htmlFor="af">Fin</label><input id="af" type="date" className="campo" value={f.fechaFin} onChange={set("fechaFin")} /></div>
         </div>
-        <div className="flex justify-end gap-2"><button className="btn-secundario" onClick={onCerrar}>Cancelar</button><button className="btn-primario" disabled={!f.descripcion || !f.meta || m.isPending} onClick={() => m.mutate()}>Crear</button></div>
+        <div className="flex justify-end gap-2"><button className="btn-secundario" onClick={onCerrar}>Cancelar</button><button className="btn-primario" disabled={!f.descripcion || !f.meta || m.isPending} onClick={() => m.mutate()}>{actividad ? "Guardar" : "Crear"}</button></div>
       </div>
+    </Modal>
+  );
+}
+
+const ESTADOS_POA = { FORMULADO: "Formulado", EN_EJECUCION: "En ejecución", CERRADO: "Cerrado" };
+
+/** Registrar (POST /poa) o editar (PUT /poa/{id}) el POA de una gestión; la gestión no cambia al editar. */
+function FormPoa({ poa, onCerrar }: { poa?: PoaResumen; onCerrar: (gestion?: number) => void }) {
+  const [f, setF] = useState({ gestion: String(poa?.gestion ?? new Date().getFullYear() + 1), objetivo: poa?.objetivo ?? "", estado: poa?.estado ?? "FORMULADO" });
+  const m = useMutation({
+    mutationFn: () => {
+      const cuerpo = { gestion: Number(f.gestion), objetivo: f.objetivo.trim(), estado: f.estado };
+      return poa ? api<PoaResumen>(`/poa/${poa.id}`, { metodo: "PUT", cuerpo }) : api<PoaResumen>("/poa", { metodo: "POST", cuerpo });
+    },
+    onSuccess: (r) => onCerrar(r.gestion),
+  });
+  return (
+    <Modal abierto titulo={poa ? `Editar POA ${poa.gestion}` : "Nuevo POA"} onCerrar={() => onCerrar()}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); m.mutate(); }}>
+        <ErrorApiAviso error={m.error} />
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="etiqueta" htmlFor="pg">Gestión</label><input id="pg" type="number" min={2000} max={2100} required className="campo" disabled={!!poa} value={f.gestion} onChange={(e) => setF({ ...f, gestion: e.target.value })} /></div>
+          {poa && <div><label className="etiqueta" htmlFor="pe">Estado</label><select id="pe" className="campo" value={f.estado} onChange={(e) => setF({ ...f, estado: e.target.value })}>{Object.entries(ESTADOS_POA).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>}
+        </div>
+        <div><label className="etiqueta" htmlFor="po">Objetivo</label><textarea id="po" required rows={4} maxLength={4000} className="campo" value={f.objetivo} onChange={(e) => setF({ ...f, objetivo: e.target.value })} /></div>
+        {poa && f.estado === "CERRADO" && poa.estado !== "CERRADO" && <p className="text-xs text-amber-700">Al cerrar el POA ya no se podrán agregar ni editar actividades.</p>}
+        <div className="flex justify-end gap-2"><button type="button" className="btn-secundario" onClick={() => onCerrar()}>Cancelar</button><button className="btn-primario" disabled={!f.objetivo.trim() || m.isPending}>{poa ? "Guardar" : "Crear"}</button></div>
+      </form>
     </Modal>
   );
 }
