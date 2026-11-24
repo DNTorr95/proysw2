@@ -124,6 +124,39 @@ def cliente():
     return TestClient(main.app)
 
 
+class CodificadorFijo:
+    """Doble de SentenceTransformers: vectores de dimensión fija sin descargar el modelo."""
+    nombre = "fijo"
+    vectores_fijos = True
+
+    def ajustar(self, textos):
+        return None
+
+    def codificar(self, textos):
+        import numpy as np
+        m = np.array([[len(t), t.count("a") + 1, 1.0] for t in textos], dtype=float)
+        return m / np.linalg.norm(m, axis=1, keepdims=True)
+
+
+def test_embeddings_con_motor_de_dimension_fija(cliente):
+    from app import main
+    main.indice = IndiceSemantico(CodificadorFijo())
+    assert cliente.post("/interno/embeddings", json={"textos": ["aulas"]}).status_code == 401
+    r = cliente.post("/interno/embeddings", json={"textos": ["aulas", "tesis", ""]}, headers=CLAVE)
+    assert r.status_code == 200
+    cuerpo = r.json()
+    assert cuerpo["dimension"] == 3 and cuerpo["motor"] == "fijo" and len(cuerpo["vectores"]) == 3
+    for v in cuerpo["vectores"]:
+        assert abs(sum(x * x for x in v) - 1) < 1e-4  # normalizados: la distancia coseno de pgvector es directa
+    assert cliente.post("/interno/embeddings", json={"textos": []}, headers=CLAVE).status_code == 422
+
+
+def test_embeddings_con_tfidf_responde_409(cliente):
+    r = cliente.post("/interno/embeddings", json={"textos": ["aulas"]}, headers=CLAVE)
+    assert r.status_code == 409
+    assert "tfidf" in r.json()["detail"]
+
+
 def test_api_exige_clave_y_flujo_completo(cliente):
     assert cliente.post("/interno/asistente", json={"pregunta": "hola"}).status_code == 401
     assert cliente.post("/interno/busqueda", json={"consulta": "aulas"}, headers=CLAVE).status_code == 409

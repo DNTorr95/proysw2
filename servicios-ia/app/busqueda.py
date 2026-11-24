@@ -6,6 +6,9 @@ El servicio devuelve ids y relevancia; el filtrado por permisos lo hace siempre 
 Motores intercambiables (interfaz `Codificador`):
 - SentenceTransformers multilingüe (por defecto: paraphrase-multilingual-MiniLM-L12-v2).
 - TF-IDF de scikit-learn como respaldo si el modelo no está disponible (o SEMANTICA_MOTOR=tfidf).
+
+Con SentenceTransformers los vectores tienen dimensión fija (384) y el backend los guarda en PostgreSQL con
+pgvector (POST /interno/embeddings). TF-IDF no tiene dimensión fija: en ese caso se usa el índice en memoria.
 """
 
 from __future__ import annotations
@@ -36,6 +39,8 @@ class Codificador(Protocol):
 
 
 class CodificadorSentence:
+    vectores_fijos = True
+
     def __init__(self, modelo: str = MODELO):
         from sentence_transformers import SentenceTransformer
 
@@ -51,6 +56,7 @@ class CodificadorSentence:
 
 class CodificadorTfidf:
     nombre = "tfidf"
+    vectores_fijos = False  # el vocabulario depende del corpus: no sirve para guardar vectores
 
     def __init__(self):
         from sklearn.feature_extraction.text import TfidfVectorizer
@@ -105,6 +111,12 @@ class IndiceSemantico:
             self._matriz = self.codificador.codificar(textos) if textos else None
             self._ids = ids
         return len(ids)
+
+    def vectores(self, textos: list[str]) -> np.ndarray:
+        """Vectores normalizados (L2) para guardarlos fuera del servicio. Exige un motor de dimensión fija."""
+        if not getattr(self.codificador, "vectores_fijos", False):
+            raise ValueError(f"El motor {self.codificador.nombre} no produce vectores de dimensión fija")
+        return self.codificador.codificar([(t or "").strip()[:4000] or "vacio" for t in textos])
 
     @property
     def tamano(self) -> int:

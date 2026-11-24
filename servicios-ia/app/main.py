@@ -71,6 +71,21 @@ async def indexar(s: SolicitudIndice) -> dict:
     return {"indexados": n, "motor": indice.codificador.nombre}
 
 
+class SolicitudVectores(BaseModel):
+    textos: list[str] = Field(..., min_length=1, max_length=256)
+
+
+@app.post("/interno/embeddings", dependencies=seguro)
+async def embeddings(s: SolicitudVectores) -> dict:
+    """Vectores para pgvector. 409 si el motor activo es TF-IDF (el backend usa entonces el índice en memoria)."""
+    try:
+        m = await run_in_threadpool(indice.vectores, s.textos)
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+    return {"vectores": [[round(float(x), 6) for x in fila] for fila in m], "dimension": int(m.shape[1]),
+            "motor": indice.codificador.nombre}
+
+
 @app.post("/interno/busqueda", dependencies=seguro)
 async def buscar(s: SolicitudBusqueda) -> dict:
     if indice.tamano == 0:
