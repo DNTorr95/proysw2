@@ -10,4 +10,6 @@ public interface TransferenciaAutoridadRepository extends JpaRepository<Transfer
     java.util.List<TransferenciaAutoridad> findByEstado(String estado);
 
     java.util.List<TransferenciaAutoridad> findByDestinoIdAndEstado(Integer idDestino, String estado);
+
+    boolean existsByIdArchivoRespaldo(Integer idArchivo);
 }

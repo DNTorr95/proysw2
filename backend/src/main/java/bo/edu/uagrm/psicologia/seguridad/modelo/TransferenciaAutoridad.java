@@ -52,6 +52,10 @@ public class TransferenciaAutoridad {
     @Column(name = "estado", nullable = false, length = 20)
     private String estado = VIGENTE;
 
+    /** Documento de respaldo escaneado (resolución, memorándum), opcional. */
+    @Column(name = "id_archivo_respaldo")
+    private Integer idArchivoRespaldo;
+
     protected TransferenciaAutoridad() {
     }
 
@@ -87,4 +91,9 @@ public class TransferenciaAutoridad {
     public LocalDate getFechaInicio() { return fechaInicio; }
     public LocalDate getFechaFin() { return fechaFin; }
     public String getEstado() { return estado; }
+    public Integer getIdArchivoRespaldo() { return idArchivoRespaldo; }
+
+    public void adjuntarRespaldo(Integer idArchivo) {
+        this.idArchivoRespaldo = idArchivo;
+    }
 }

@@ -3,6 +3,10 @@ package bo.edu.uagrm.psicologia.seguridad.servicio;
 import bo.edu.uagrm.psicologia.comun.auditoria.AuditoriaService;
 import bo.edu.uagrm.psicologia.comun.error.NegocioException;
 import bo.edu.uagrm.psicologia.comun.error.RecursoNoEncontradoException;
+import bo.edu.uagrm.psicologia.documental.dto.DocumentalDtos.ArchivoDto;
+import bo.edu.uagrm.psicologia.documental.modelo.ArchivoAdjunto;
+import bo.edu.uagrm.psicologia.documental.repositorio.ArchivoAdjuntoRepository;
+import bo.edu.uagrm.psicologia.documental.servicio.DocumentoService;
 import bo.edu.uagrm.psicologia.seguridad.modelo.Rol;
 import bo.edu.uagrm.psicologia.seguridad.modelo.TransferenciaAutoridad;
 import bo.edu.uagrm.psicologia.seguridad.modelo.Usuario;
@@ -17,9 +21,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /** CU-04 Transferir autoridad de Dirección (delegación temporal o indefinida, revocable). */
 @Service
@@ -30,12 +38,16 @@ public class TransferenciaAutoridadService {
     private final TransferenciaAutoridadRepository transferencias;
     private final UsuarioRepository usuarios;
     private final AuditoriaService auditoria;
+    private final DocumentoService documentos;
+    private final ArchivoAdjuntoRepository archivos;
 
     public TransferenciaAutoridadService(TransferenciaAutoridadRepository transferencias, UsuarioRepository usuarios,
-                                         AuditoriaService auditoria) {
+                                         AuditoriaService auditoria, DocumentoService documentos, ArchivoAdjuntoRepository archivos) {
         this.transferencias = transferencias;
         this.usuarios = usuarios;
         this.auditoria = auditoria;
+        this.documentos = documentos;
+        this.archivos = archivos;
     }
 
     public record TransferirRequest(
@@ -48,18 +60,43 @@ public class TransferenciaAutoridadService {
 
     public record TransferenciaDto(Integer id, Integer idOrigen, String origen, Integer idDestino, String destino,
                                    String rolDestino, String motivo, String resolucion, LocalDate fechaInicio,
-                                   LocalDate fechaFin, String estado, boolean activaHoy) {
-        static TransferenciaDto de(TransferenciaAutoridad t) {
+                                   LocalDate fechaFin, String estado, boolean activaHoy, ArchivoDto respaldo) {
+        static TransferenciaDto de(TransferenciaAutoridad t, ArchivoAdjunto respaldo) {
             return new TransferenciaDto(t.getId(), t.getOrigen().getId(), t.getOrigen().getPersona().nombreCompleto(),
                     t.getDestino().getId(), t.getDestino().getPersona().nombreCompleto(), t.getDestino().getRol().getNombre(),
                     t.getMotivo(), t.getResolucion(), t.getFechaInicio(), t.getFechaFin(), t.getEstado(),
-                    t.activaEn(LocalDate.now()));
+                    t.activaEn(LocalDate.now()), respaldo == null ? null : ArchivoDto.de(respaldo));
         }
     }
 
     @Transactional(readOnly = true)
     public List<TransferenciaDto> listar() {
-        return transferencias.findAllByOrderByFechaInicioDescIdDesc().stream().map(TransferenciaDto::de).toList();
+        List<TransferenciaAutoridad> lista = transferencias.findAllByOrderByFechaInicioDescIdDesc();
+        Map<Integer, ArchivoAdjunto> respaldos = archivos.findAllById(lista.stream().map(TransferenciaAutoridad::getIdArchivoRespaldo)
+                        .filter(java.util.Objects::nonNull).toList()).stream()
+                .collect(Collectors.toMap(ArchivoAdjunto::getId, Function.identity()));
+        return lista.stream().map(t -> TransferenciaDto.de(t, respaldos.get(t.getIdArchivoRespaldo()))).toList();
+    }
+
+    private TransferenciaDto aDto(TransferenciaAutoridad t) {
+        return TransferenciaDto.de(t, t.getIdArchivoRespaldo() == null ? null : archivos.findById(t.getIdArchivoRespaldo()).orElse(null));
+    }
+
+    /**
+     * Adjunta (o reemplaza) el documento de respaldo de una transferencia vigente: resolución, memorándum u otro
+     * documento escaneado. El archivo se valida como cualquier documento (tipo real, 10 MB, SHA-256).
+     */
+    @Transactional
+    public TransferenciaDto adjuntarRespaldo(Integer id, MultipartFile archivo) {
+        TransferenciaAutoridad t = transferencias.findById(id).orElseThrow(() -> new RecursoNoEncontradoException("Transferencia", id));
+        if (!TransferenciaAutoridad.VIGENTE.equals(t.getEstado())) {
+            throw new NegocioException(HttpStatus.CONFLICT, "Solo se adjunta el respaldo de una transferencia vigente");
+        }
+        ArchivoAdjunto a = documentos.guardar(archivo, "autoridad", null, null, "Respaldo de la transferencia de autoridad #" + id);
+        t.adjuntarRespaldo(a.getId());
+        auditoria.registrar("ADJUNTAR_RESPALDO_AUTORIDAD", "TRANSFERENCIA_AUTORIDAD", t.getId(),
+                a.getNombreArchivo() + " (SHA-256 " + a.getHashSha256() + ")");
+        return TransferenciaDto.de(t, a);
     }
 
     @Transactional
@@ -90,7 +127,7 @@ public class TransferenciaAutoridadService {
         auditoria.registrar("TRANSFERIR_AUTORIDAD", "TRANSFERENCIA_AUTORIDAD", t.getId(), origen.getNombreUsuario() + " -> "
                 + destino.getNombreUsuario() + " del " + t.getFechaInicio() + (t.getFechaFin() == null ? " (indefinida)" : " al " + t.getFechaFin())
                 + ". Motivo: " + t.getMotivo());
-        return TransferenciaDto.de(t);
+        return aDto(t);
     }
 
     @Transactional
@@ -105,7 +142,7 @@ public class TransferenciaAutoridadService {
         }
         t.revocar(LocalDate.now());
         auditoria.registrar("REVOCAR_AUTORIDAD", "TRANSFERENCIA_AUTORIDAD", t.getId(), "Revocada. Motivo: " + motivo);
-        return TransferenciaDto.de(t);
+        return aDto(t);
     }
 
     /** Job diario: las transferencias vencidas pasan a FINALIZADA (la autoridad ya expiró por fecha). */

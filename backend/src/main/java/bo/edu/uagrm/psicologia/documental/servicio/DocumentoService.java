@@ -12,6 +12,7 @@ import bo.edu.uagrm.psicologia.seguridad.servicio.UsuarioActual;
 import bo.edu.uagrm.psicologia.seguridad.servicio.UsuarioAutenticado;
 import bo.edu.uagrm.psicologia.tramites.modelo.DocumentoTramite;
 import bo.edu.uagrm.psicologia.tramites.repositorio.DocumentoTramiteRepository;
+import bo.edu.uagrm.psicologia.seguridad.repositorio.TransferenciaAutoridadRepository;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -38,13 +39,16 @@ public class DocumentoService {
     private final DocumentoTramiteRepository documentosTramite;
     private final AlmacenamientoService almacenamiento;
     private final AuditoriaService auditoria;
+    private final TransferenciaAutoridadRepository transferencias;
 
     public DocumentoService(ArchivoAdjuntoRepository archivos, DocumentoTramiteRepository documentosTramite,
-                            AlmacenamientoService almacenamiento, AuditoriaService auditoria) {
+                            AlmacenamientoService almacenamiento, AuditoriaService auditoria,
+                            TransferenciaAutoridadRepository transferencias) {
         this.archivos = archivos;
         this.documentosTramite = documentosTramite;
         this.almacenamiento = almacenamiento;
         this.auditoria = auditoria;
+        this.transferencias = transferencias;
     }
 
     /** Guarda el archivo en el volumen y registra sus metadatos. Si la transacción falla, el archivo se borra. */
@@ -125,6 +129,9 @@ public class DocumentoService {
         if (documentosTramite.existsByArchivoId(id)) {
             throw new NegocioException(HttpStatus.CONFLICT, "El documento está registrado como requisito de un trámite y no puede eliminarse");
         }
+        if (transferencias.existsByIdArchivoRespaldo(id)) {
+            throw new NegocioException(HttpStatus.CONFLICT, "El documento es el respaldo de una transferencia de autoridad y no puede eliminarse");
+        }
         archivos.delete(a);
         String ruta = a.getRuta();
         // El archivo físico se borra solo si la transacción se confirma
@@ -148,6 +155,10 @@ public class DocumentoService {
                 && (u.tienePermiso("CONSULTAR_CORRESPONDENCIA") || u.tienePermiso("GESTIONAR_CORRESPONDENCIA"))) return;
         if (a.getIdExpediente() != null
                 && (u.tienePermiso("CONSULTAR_EXPEDIENTES") || u.tienePermiso("GESTIONAR_EXPEDIENTES"))) return;
+        if (transferencias.existsByIdArchivoRespaldo(a.getId())) {
+            if (u.tienePermiso("TRANSFERIR_AUTORIDAD")) return;
+            throw new NegocioException(HttpStatus.FORBIDDEN, "No tiene permiso para acceder a este documento");
+        }
         List<DocumentoTramite> enTramites = documentosTramite.findByArchivoId(a.getId());
         if (!enTramites.isEmpty() && (u.tienePermiso("CONSULTAR_TRAMITES") || u.tienePermiso("GESTIONAR_REQUISITOS"))) return;
         throw new NegocioException(HttpStatus.FORBIDDEN, "No tiene permiso para acceder a este documento");

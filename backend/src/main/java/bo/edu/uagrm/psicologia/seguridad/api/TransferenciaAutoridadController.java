@@ -9,6 +9,9 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -47,6 +50,12 @@ public class TransferenciaAutoridadController {
     @Operation(summary = "Transferir la autoridad de Dirección a otro usuario (con fechas y motivo)")
     public TransferenciaDto transferir(@Valid @RequestBody TransferirRequest req) {
         return servicio.transferir(req);
+    }
+
+    @PostMapping(value = "/{id}/respaldo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Adjuntar o reemplazar el documento de respaldo de una transferencia vigente (PDF/JPG/PNG/DOCX, máx. 10 MB)")
+    public TransferenciaDto respaldo(@PathVariable Integer id, @RequestPart("archivo") MultipartFile archivo) {
+        return servicio.adjuntarRespaldo(id, archivo);
     }
 
     @PostMapping("/{id}/revocacion")
