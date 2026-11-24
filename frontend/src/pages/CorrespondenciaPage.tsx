@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Eraser, Pencil, Plus, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Eraser, Pencil, Plus, ShieldCheck, Users } from "lucide-react";
 import { api, subirArchivo, type Pagina } from "../api/cliente";
 import type { Correspondencia, CorrespondenciaDetalle, Destinatario, EstadoCorrespondencia } from "../api/tipos";
 import { useAuth } from "../auth/AuthContext";
@@ -18,6 +18,7 @@ export default function CorrespondenciaPage() {
   const [pagina, setPagina] = useState(0);
   const [creando, setCreando] = useState(false);
   const [detalle, setDetalle] = useState<number | null>(null);
+  const [verDestinatarios, setVerDestinatarios] = useState(false);
 
   const destinatarios = useQuery({ queryKey: ["destinatarios"], queryFn: () => api<Destinatario[]>("/destinatarios") });
   const lista = useQuery({
@@ -33,7 +34,10 @@ export default function CorrespondenciaPage() {
   return (
     <>
       <Encabezado titulo="Correspondencia institucional" descripcion="Oficios recibidos y emitidos por la Dirección de Carrera"
-        acciones={puedeGestionar && <button className="btn-primario" onClick={() => setCreando(true)}><Plus className="h-4 w-4" /> Registrar oficio</button>} />
+        acciones={puedeGestionar && <>
+          <button className="btn-secundario" onClick={() => setVerDestinatarios(true)}><Users className="h-4 w-4" /> Destinatarios</button>
+          <button className="btn-primario" onClick={() => setCreando(true)}><Plus className="h-4 w-4" /> Registrar oficio</button>
+        </>} />
 
       <div className="tarjeta">
         <div className="grid gap-3 border-b border-slate-200 p-3 sm:grid-cols-2 lg:grid-cols-8">
@@ -81,6 +85,7 @@ export default function CorrespondenciaPage() {
       </div>
 
       {creando && <FormularioOficio destinatarios={destinatarios.data ?? []} onCerrar={(id) => { setCreando(false); if (id) setDetalle(id); }} />}
+      {verDestinatarios && <Destinatarios lista={destinatarios.data ?? []} onCerrar={() => setVerDestinatarios(false)} />}
       {detalle !== null && <DetalleOficio id={detalle} destinatarios={destinatarios.data ?? []} onCerrar={() => setDetalle(null)} />}
     </>
   );
@@ -233,6 +238,75 @@ function DetalleOficio({ id, destinatarios, onCerrar }: { id: number; destinatar
         </div>
       )}
       {editando && c && <FormularioOficio oficio={c} destinatarios={destinatarios} onCerrar={() => { setEditando(false); refrescar(); }} />}
+    </Modal>
+  );
+}
+
+const DESTINATARIO_VACIO = { nombre: "", cargo: "", unidad: "", institucion: "", correo: "", activo: true };
+
+/** Catálogo de destinatarios / dependencias: alta, edición y baja lógica (inactivo). */
+function Destinatarios({ lista, onCerrar }: { lista: Destinatario[]; onCerrar: () => void }) {
+  const qc = useQueryClient();
+  const [editando, setEditando] = useState<Destinatario | "nuevo" | null>(null);
+  const [d, setD] = useState(DESTINATARIO_VACIO);
+  const abrir = (x: Destinatario | "nuevo") => {
+    setEditando(x);
+    setD(x === "nuevo" ? DESTINATARIO_VACIO
+      : { nombre: x.nombre, cargo: x.cargo ?? "", unidad: x.unidad, institucion: x.institucion ?? "", correo: x.correo ?? "", activo: x.activo });
+    guardar.reset();
+  };
+  const guardar = useMutation({
+    mutationFn: () => {
+      const cuerpo = { ...d, cargo: d.cargo || null, institucion: d.institucion || null, correo: d.correo || null };
+      return editando === "nuevo" || editando === null
+        ? api<Destinatario>("/destinatarios", { metodo: "POST", cuerpo })
+        : api<Destinatario>(`/destinatarios/${editando.id}`, { metodo: "PUT", cuerpo });
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["destinatarios"] }); setEditando(null); },
+  });
+  const set = (k: "nombre" | "cargo" | "unidad" | "institucion" | "correo") => (e: React.ChangeEvent<HTMLInputElement>) => setD({ ...d, [k]: e.target.value });
+  const enviar = (e: FormEvent) => { e.preventDefault(); guardar.mutate(); };
+
+  return (
+    <Modal abierto titulo="Destinatarios y dependencias" ancho="max-w-3xl" onCerrar={onCerrar}>
+      {editando === null ? (
+        <div className="space-y-3">
+          <div className="flex justify-end"><button className="btn-primario" onClick={() => abrir("nuevo")}><Plus className="h-4 w-4" /> Nuevo destinatario</button></div>
+          <div className="max-h-[60vh] overflow-y-auto">
+            <table className="tabla">
+              <thead><tr><th>Unidad</th><th>Nombre y cargo</th><th>Correo</th><th>Estado</th><th><span className="sr-only">Acciones</span></th></tr></thead>
+              <tbody>
+                {lista.map((x) => (
+                  <tr key={x.id}>
+                    <td>{x.unidad}<span className="block text-xs text-slate-500">{x.institucion}</span></td>
+                    <td>{x.nombre}{x.cargo && <span className="block text-xs text-slate-500">{x.cargo}</span>}</td>
+                    <td className="text-xs">{x.correo ?? "—"}</td>
+                    <td>{x.activo ? <Insignia color="verde">Activo</Insignia> : <Insignia>Inactivo</Insignia>}</td>
+                    <td><button className="btn-secundario px-2 py-1 text-xs" onClick={() => abrir(x)} aria-label={`Editar ${x.unidad}`}><Pencil className="h-3.5 w-3.5" /> Editar</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <form className="space-y-4" onSubmit={enviar}>
+          <h3 className="font-semibold">{editando === "nuevo" ? "Nuevo destinatario" : `Editar ${editando.unidad}`}</h3>
+          <ErrorApiAviso error={guardar.error} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div><label className="etiqueta" htmlFor="dun">Unidad o dependencia</label><input id="dun" className="campo" required maxLength={150} value={d.unidad} onChange={set("unidad")} /></div>
+            <div><label className="etiqueta" htmlFor="dins">Institución</label><input id="dins" className="campo" maxLength={150} value={d.institucion} onChange={set("institucion")} /></div>
+            <div><label className="etiqueta" htmlFor="dnom">Nombre</label><input id="dnom" className="campo" required maxLength={150} value={d.nombre} onChange={set("nombre")} /></div>
+            <div><label className="etiqueta" htmlFor="dcar">Cargo</label><input id="dcar" className="campo" maxLength={100} value={d.cargo} onChange={set("cargo")} /></div>
+            <div><label className="etiqueta" htmlFor="dcor">Correo</label><input id="dcor" type="email" className="campo" maxLength={150} value={d.correo} onChange={set("correo")} /></div>
+            {editando !== "nuevo" && <label className="flex items-center gap-2 self-end text-sm"><input type="checkbox" checked={d.activo} onChange={(e) => setD({ ...d, activo: e.target.checked })} /> Activo (aparece al registrar oficios)</label>}
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn-secundario" onClick={() => setEditando(null)}>Volver</button>
+            <button className="btn-primario" disabled={guardar.isPending}>Guardar</button>
+          </div>
+        </form>
+      )}
     </Modal>
   );
 }
