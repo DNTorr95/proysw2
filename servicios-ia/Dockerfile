@@ -12,6 +12,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')"
 COPY app ./app
 RUN useradd -r -u 1002 ia && chmod -R a+rX /opt/modelos
+# Modelos predictivos entrenados (volumen "modelos-ia"): el usuario ia debe poder escribir en él
+RUN mkdir -p /var/lib/modelos-ia && chown ia /var/lib/modelos-ia
+ENV MODELOS_DIR=/var/lib/modelos-ia
 USER ia
 EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 \

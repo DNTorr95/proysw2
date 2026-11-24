@@ -7,6 +7,7 @@ Todo dato llega desde el backend (que filtra por permisos) y el volumen document
 """
 
 import logging
+import os
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
@@ -23,7 +24,7 @@ logging.basicConfig(level=logging.INFO, format='{"nivel":"%(levelname)s","logger
 app = FastAPI(title="Proyecto 25 - Servicios inteligentes", version="1.0.0", docs_url=None, redoc_url=None)
 motor_ocr = MotorTesseract()
 indice = IndiceSemantico()
-modelo = ModeloDemora()
+modelo = ModeloDemora(os.environ.get("MODELOS_DIR") or None)
 interprete = InterpreteReglas()
 seguro = [Depends(verificar_clave)]
 
@@ -83,6 +84,7 @@ async def buscar(s: SolicitudBusqueda) -> dict:
 
 class SolicitudEntrenamiento(BaseModel):
     historico: list[dict]
+    version: int | None = Field(None, ge=1)
 
 
 class SolicitudPrediccion(BaseModel):
@@ -92,7 +94,7 @@ class SolicitudPrediccion(BaseModel):
 @app.post("/interno/prediccion/entrenamiento", dependencies=seguro)
 async def entrenar(s: SolicitudEntrenamiento) -> dict:
     try:
-        m = await run_in_threadpool(modelo.entrenar, s.historico)
+        m = await run_in_threadpool(modelo.entrenar, s.historico, s.version)
     except ErrorPrediccion as e:
         raise HTTPException(422, str(e)) from e
     return m.__dict__
@@ -104,6 +106,13 @@ async def predecir(s: SolicitudPrediccion) -> dict:
         raise HTTPException(409, "El modelo no está entrenado")
     probabilidades = await run_in_threadpool(modelo.predecir, s.tramites)
     return {"probabilidades": probabilidades, "metricas": modelo.metricas.__dict__}
+
+
+@app.get("/interno/prediccion/modelo", dependencies=seguro)
+def modelo_vigente() -> dict:
+    if not modelo.entrenado:
+        raise HTTPException(404, "No hay un modelo entrenado")
+    return {**modelo.metricas.__dict__, "versionesGuardadas": modelo.versiones()}
 
 
 # ---------------- Asistente (CU-25) ----------------

@@ -91,6 +91,39 @@ def test_prediccion_valida_el_historico():
         m.predecir([{}])
 
 
+def test_modelo_se_guarda_y_se_recupera_al_reiniciar(tmp_path):
+    m = ModeloDemora(tmp_path)
+    metricas = m.entrenar(historico(), version=3)
+    assert metricas.version == 3 and metricas.fecha and len(metricas.sha256) == 64
+    assert (tmp_path / "demora-v3.joblib").is_file() and (tmp_path / "vigente.json").is_file()
+    tramite = {"tipo": "Traspaso", "prioridad": "MEDIA", "plazoDias": 15, "requisitosPendientes": 1, "observaciones": 2,
+               "mesRecepcion": 10}
+    reiniciado = ModeloDemora(tmp_path)  # simula el reinicio del servicio
+    assert reiniciado.entrenado and reiniciado.metricas == metricas
+    assert reiniciado.predecir([tramite]) == m.predecir([tramite])
+
+
+def test_modelo_conserva_las_versiones_y_numera_solo(tmp_path):
+    m = ModeloDemora(tmp_path)
+    assert m.entrenar(historico()).version == 1
+    assert m.entrenar(historico(semilla=7)).version == 2
+    assert m.versiones() == [1, 2]
+    assert ModeloDemora(tmp_path).metricas.version == 2
+
+
+def test_modelo_alterado_no_se_carga(tmp_path):
+    ModeloDemora(tmp_path).entrenar(historico(), version=1)
+    with open(tmp_path / "demora-v1.joblib", "ab") as f:
+        f.write(b"alterado")
+    assert not ModeloDemora(tmp_path).entrenado
+
+
+def test_sin_directorio_el_modelo_no_se_guarda(tmp_path):
+    m = ModeloDemora()
+    assert m.entrenar(historico()).sha256 is None
+    assert m.versiones() == []
+
+
 # ---------------------------------------------------------------- Asistente
 
 @pytest.mark.parametrize("pregunta,intencion", [
@@ -137,6 +170,15 @@ def test_api_exige_clave_y_flujo_completo(cliente):
     assert len(r.json()["probabilidades"]) == 1
     r = cliente.post("/interno/ocr", json={"ruta": "../secreto.png"}, headers=CLAVE)
     assert r.status_code == 422
+
+
+def test_api_informa_el_modelo_vigente(cliente):
+    h = {"X-Service-Key": os.environ["SERVICE_KEY"]}
+    assert cliente.get("/interno/prediccion/modelo", headers=h).status_code == 404
+    r = cliente.post("/interno/prediccion/entrenamiento", json={"historico": historico(), "version": 5}, headers=h)
+    assert r.status_code == 200 and r.json()["version"] == 5
+    v = cliente.get("/interno/prediccion/modelo", headers=h)
+    assert v.status_code == 200 and v.json()["version"] == 5 and v.json()["modelo"] == "RandomForest"
 
 
 def test_servicio_no_tiene_acceso_a_base_de_datos():
