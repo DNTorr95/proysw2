@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, BrainCircuit, CircleAlert, Info, RefreshCw } from "lucide-react";
+import { AlertTriangle, BrainCircuit, CircleAlert, History, Info, RefreshCw } from "lucide-react";
 import { api, type Pagina } from "../../api/cliente";
-import type { Alerta, AnalisisPredictivo, ResumenAlertas } from "../../api/tipos";
+import type { Alerta, AnalisisPredictivo, ModeloPredictivo, ResumenAlertas } from "../../api/tipos";
 import { useAuth } from "../../auth/AuthContext";
 import { Aviso, Cargando, Encabezado, ErrorApiAviso, Insignia, Modal, Paginacion, formatoFechaHora } from "../../components/ui";
 import { ESTADOS_TRAMITE, formatoFecha } from "../../lib/estados";
@@ -31,7 +31,12 @@ export default function AlertasPage() {
   });
   const refrescar = () => { qc.invalidateQueries({ queryKey: ["alertas"] }); qc.invalidateQueries({ queryKey: ["alertas-resumen"] }); };
   const generar = useMutation({ mutationFn: () => api<{ creadas: number; actualizadas: number; cerradasAutomaticamente: number }>("/alertas/generacion", { metodo: "POST" }), onSuccess: refrescar });
-  const predecir = useMutation({ mutationFn: () => api<AnalisisPredictivo>("/prediccion/analisis", { metodo: "POST" }), onSuccess: (a) => { setAnalisis(a); refrescar(); } });
+  const predecir = useMutation({
+    mutationFn: (reentrenar: boolean) => api<AnalisisPredictivo>(`/prediccion/analisis?reentrenar=${reentrenar}`, { metodo: "POST" }),
+    onSuccess: (a) => { setAnalisis(a); refrescar(); qc.invalidateQueries({ queryKey: ["modelos-prediccion"] }); },
+  });
+  const [verModelos, setVerModelos] = useState(false);
+  const modelos = useQuery({ queryKey: ["modelos-prediccion"], queryFn: () => api<ModeloPredictivo[]>("/prediccion/modelos"), enabled: verModelos });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLSelectElement>) => { setF({ ...f, [k]: e.target.value }); setPagina(0); };
   const r = resumen.data;
 
@@ -40,7 +45,12 @@ export default function AlertasPage() {
       <Encabezado titulo="Alertas" descripcion="Plazos vencidos o por vencer y riesgo de demora estimado por el modelo predictivo"
         acciones={<>
           {(tienePermiso("ATENDER_ALERTAS") || tienePermiso("ANALISIS_PREDICTIVO")) && <button className="btn-secundario" disabled={generar.isPending} onClick={() => generar.mutate()}><RefreshCw className="h-4 w-4" /> Revisar plazos ahora</button>}
-          {tienePermiso("ANALISIS_PREDICTIVO") && <button className="btn-primario" disabled={predecir.isPending} onClick={() => predecir.mutate()}><BrainCircuit className="h-4 w-4" /> {predecir.isPending ? "Analizando…" : "Análisis predictivo"}</button>}
+          {tienePermiso("ANALISIS_PREDICTIVO") && <>
+            <button className="btn-secundario" onClick={() => setVerModelos(true)}><History className="h-4 w-4" /> Versiones del modelo</button>
+            <button className="btn-secundario" disabled={predecir.isPending} onClick={() => predecir.mutate(true)}
+              title="Entrena una versión nueva con los trámites cerrados y la deja vigente">Reentrenar modelo</button>
+            <button className="btn-primario" disabled={predecir.isPending} onClick={() => predecir.mutate(false)}><BrainCircuit className="h-4 w-4" /> {predecir.isPending ? "Analizando…" : "Análisis predictivo"}</button>
+          </>}
         </>} />
       <div className="mb-4 space-y-2">
         <ErrorApiAviso error={generar.error ?? predecir.error} />
@@ -60,7 +70,7 @@ export default function AlertasPage() {
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <h2 className="font-semibold">Resultado del análisis predictivo</h2>
-              <p className="text-sm text-slate-600">Modelo {analisis.modelo} entrenado con {analisis.historicos} trámites cerrados ({analisis.demoradosHistoricos} demorados)
+              <p className="text-sm text-slate-600">Modelo {analisis.modelo} v{analisis.version} ({analisis.reentrenado ? "entrenado ahora" : `guardado, entrenado el ${formatoFechaHora(analisis.fechaEntrenamiento)}`}) con {analisis.historicos} trámites cerrados ({analisis.demoradosHistoricos} demorados)
                 {analisis.exactitud !== null && ` · exactitud por validación cruzada ${Math.round(analisis.exactitud * 100)} %`} · {analisis.evaluados} trámites en curso evaluados · {analisis.alertasCreadas} alerta(s) nueva(s).</p>
             </div>
             <button className="text-xs text-marca-700 underline" onClick={() => setAnalisis(null)}>Ocultar</button>
@@ -111,6 +121,28 @@ export default function AlertasPage() {
         )}
       </div>
       {atender && <DialogoAtencion alerta={atender} onCerrar={() => { setAtender(null); refrescar(); }} />}
+      <Modal abierto={verModelos} titulo="Versiones del modelo predictivo" ancho="max-w-3xl" onCerrar={() => setVerModelos(false)}>
+        {modelos.isLoading ? <Cargando /> : <ErrorApiAviso error={modelos.error} />}
+        {modelos.data && (modelos.data.length === 0
+          ? <p className="text-sm text-slate-600">Todavía no hay un modelo entrenado. El primer análisis predictivo lo entrena y lo guarda.</p>
+          : (
+            <table className="tabla">
+              <thead><tr><th>Versión</th><th>Entrenado</th><th>Ejemplos</th><th>Exactitud</th><th>SHA-256</th><th>Estado</th></tr></thead>
+              <tbody>
+                {modelos.data.map((m) => (
+                  <tr key={m.version}>
+                    <td>v{m.version} · {m.algoritmo}</td>
+                    <td>{formatoFechaHora(m.fechaEntrenamiento)}</td>
+                    <td>{m.ejemplos} ({m.demorados} demorados)</td>
+                    <td>{m.exactitud === null ? "—" : `${Math.round(m.exactitud * 100)} %`}</td>
+                    <td className="font-mono text-xs" title={m.hashSha256 ?? undefined}>{m.hashSha256 ? `${m.hashSha256.slice(0, 12)}…` : "—"}</td>
+                    <td>{m.vigente ? <Insignia color="verde">Vigente</Insignia> : <span className="text-xs text-slate-500">Anterior</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ))}
+      </Modal>
     </>
   );
 }

@@ -607,6 +607,13 @@ export interface AnalisisPredictivo {
   historicos: number; demoradosHistoricos: number; exactitud: number | null; modelo: string; evaluados: number;
   alertasCreadas: number; alertasActualizadas: number;
   riesgos: { idTramite: number; numero: string; tipo: string; estudiante: string; estado: string; fechaLimite: string; probabilidad: number; nivel: string }[];
+  /** Versión del modelo usada; reentrenado indica si se entrenó en este análisis. */
+  version: number; fechaEntrenamiento: string; reentrenado: boolean;
+}
+
+export interface ModeloPredictivo {
+  version: number; algoritmo: string; fechaEntrenamiento: string; ejemplos: number; demorados: number;
+  exactitud: number | null; hashSha256: string | null; idUsuario: number | null; vigente: boolean;
 }
 
 export interface DocumentoOcr { archivo: Archivo; estadoOcr: "PENDIENTE" | "EXTRAIDO" | "VALIDADO"; confianza: number | null; validado: boolean }
