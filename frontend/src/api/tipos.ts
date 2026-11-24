@@ -575,6 +575,8 @@ export interface Transferencia {
   fechaFin: string | null;
   estado: string;
   activaHoy: boolean;
+  /** Documento escaneado de respaldo (resolución, memorándum), si se adjuntó. */
+  respaldo: Archivo | null;
 }
 
 // ---------- Iteración 5: inteligencia, reportes y alertas ----------
