@@ -6,7 +6,7 @@ name: proyecto25
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16   # PostgreSQL 16 + extensión pgvector (búsqueda semántica, V7)
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME}

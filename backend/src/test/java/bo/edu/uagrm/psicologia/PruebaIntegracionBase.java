@@ -11,6 +11,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.utility.DockerImageName;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
@@ -33,7 +34,7 @@ public abstract class PruebaIntegracionBase {
 
     static {
         if (URL_EXTERNA == null && dockerDisponible()) {
-            POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+            POSTGRES = new PostgreSQLContainer<>(DockerImageName.parse("pgvector/pgvector:pg16").asCompatibleSubstituteFor("postgres"));
             POSTGRES.start();
         } else {
             POSTGRES = null;

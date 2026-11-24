@@ -88,6 +88,23 @@ Los scripts de referencia están en [`db/`](db/). Flyway los ejecuta desde `back
 | V2_1 | `V2_1__ajustes_conexion.sql` | 6 claves foráneas de conexión, secuencias, guardas y restricciones |
 | V3 | `V3__seed_desarrollo.sql` | Datos ficticios: permisos, usuarios, 40 estudiantes, 20 materias, 150 oficios, 60 trámites, POA… |
 | V4 | `V4__secuencias_codigos.sql` | Secuencias de los códigos únicos (TRM-, DCP-REC/EMI-, EXP-). No agrega tablas ni columnas |
+| V7 | `V7__vectores_busqueda_semantica.sql` | Extensión `vector` y tabla `embedding_documento` con índice HNSW para la búsqueda semántica (CU-24) |
+
+**pgvector.** La base usa la imagen `pgvector/pgvector:pg16` (PostgreSQL 16 sobre Debian). servicios-ia calcula los
+vectores (384 dimensiones) y el backend los guarda en `embedding_documento`; la búsqueda se resuelve en PostgreSQL con
+distancia coseno. Al reindexar solo se recalculan los textos que cambiaron (SHA-256 del texto). Si servicios-ia trabaja
+con TF-IDF (`SEMANTICA_MOTOR=tfidf` o sin el modelo), se usa su índice en memoria como antes.
+
+> **Volumen existente creado con `postgres:16-alpine`.** Los datos son compatibles (misma versión mayor), pero Alpine
+> (musl) y Debian (glibc) ordenan el texto distinto con la configuración regional `en_US.utf8`. Después de cambiar la
+> imagen hay que reconstruir los índices de texto una sola vez, antes de usar el sistema:
+>
+> ```bash
+> ./scripts/respaldo.sh                      # respaldo previo
+> docker compose up -d postgres
+> docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "REINDEX DATABASE \"$POSTGRES_DB\""'
+> docker compose up -d
+> ```
 
 El modelo final tiene **44 tablas y 64 claves foráneas**.
 
