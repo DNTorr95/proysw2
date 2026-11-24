@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarPlus, Copy, Lock, Unlock } from "lucide-react";
+import { CalendarPlus, Copy, Lock, Pencil, Unlock } from "lucide-react";
 import { api } from "../../api/cliente";
 import type { Periodo, ResumenPlanificacion } from "../../api/tipos";
 import { Cargando, ErrorApiAviso, Insignia, Modal } from "../../components/ui";
@@ -17,6 +17,7 @@ export function PestanaPlanificacion({ periodos, idPeriodo, onSeleccionar }: {
   const gestiona = usePuede("GESTIONAR_PLANIFICACION");
   const [creando, setCreando] = useState(false);
   const [copiando, setCopiando] = useState(false);
+  const [editando, setEditando] = useState(false);
   const resumen = useQuery({
     queryKey: ["periodo-resumen", idPeriodo],
     queryFn: () => api<ResumenPlanificacion>(`/periodos/${idPeriodo}/resumen`),
@@ -59,6 +60,7 @@ export function PestanaPlanificacion({ periodos, idPeriodo, onSeleccionar }: {
               </div>
               {gestiona && (
                 <div className="flex flex-wrap gap-2">
+                  {p.estado !== "CERRADO" && <button className="btn-secundario" onClick={() => setEditando(true)}><Pencil className="h-4 w-4" /> Editar fechas</button>}
                   {p.estado === "PLANIFICADO" && p.grupos === 0 && <button className="btn-secundario" onClick={() => setCopiando(true)}><Copy className="h-4 w-4" /> Copiar oferta</button>}
                   {p.estado === "PLANIFICADO" && <button className="btn-primario" disabled={estado.isPending} onClick={() => estado.mutate("ABIERTO")}><Unlock className="h-4 w-4" /> Abrir periodo</button>}
                   {p.estado === "ABIERTO" && <button className="btn-peligro" disabled={estado.isPending} onClick={() => estado.mutate("CERRADO")}><Lock className="h-4 w-4" /> Cerrar periodo</button>}
@@ -87,6 +89,7 @@ export function PestanaPlanificacion({ periodos, idPeriodo, onSeleccionar }: {
       </section>
 
       {creando && <NuevoPeriodo onCerrar={(id) => { setCreando(false); refrescar(); if (id) onSeleccionar(id); }} />}
+      {editando && p && <EditarPeriodo periodo={p} onCerrar={() => { setEditando(false); refrescar(); }} />}
       {copiando && p && <CopiarOferta destino={p} periodos={periodos.filter((x) => x.id !== p.id && x.grupos > 0)} onCerrar={() => { setCopiando(false); refrescar(); }} />}
     </div>
   );
@@ -122,6 +125,32 @@ function NuevoPeriodo({ onCerrar }: { onCerrar: (id?: number) => void }) {
         </div>
         <div className="flex justify-end gap-2"><button className="btn-secundario" onClick={() => onCerrar()}>Cancelar</button><button className="btn-primario" disabled={m.isPending} onClick={() => m.mutate()}>Crear</button></div>
       </div>
+    </Modal>
+  );
+}
+
+/** CU-13 Ajustar las fechas de un periodo no cerrado (la gestión y el semestre no cambian). */
+function EditarPeriodo({ periodo, onCerrar }: { periodo: Periodo; onCerrar: () => void }) {
+  const [f, setF] = useState({ fechaInicio: periodo.fechaInicio, fechaFin: periodo.fechaFin, fechaCierreInscripcion: periodo.fechaCierreInscripcion ?? "" });
+  const m = useMutation({
+    mutationFn: () => api<Periodo>(`/periodos/${periodo.id}`, {
+      metodo: "PUT",
+      cuerpo: { gestion: periodo.gestion, semestre: periodo.semestre, ...f, fechaCierreInscripcion: f.fechaCierreInscripcion || null },
+    }),
+    onSuccess: onCerrar,
+  });
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
+  return (
+    <Modal abierto titulo={`Editar fechas del periodo ${periodo.nombre}`} onCerrar={onCerrar}>
+      <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); m.mutate(); }}>
+        <ErrorApiAviso error={m.error} />
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="etiqueta" htmlFor="eini">Inicio</label><input id="eini" type="date" required className="campo" value={f.fechaInicio} onChange={set("fechaInicio")} /></div>
+          <div><label className="etiqueta" htmlFor="efin">Fin</label><input id="efin" type="date" required className="campo" value={f.fechaFin} onChange={set("fechaFin")} /></div>
+          <div className="col-span-2"><label className="etiqueta" htmlFor="ecie">Cierre de inscripciones</label><input id="ecie" type="date" className="campo" value={f.fechaCierreInscripcion} onChange={set("fechaCierreInscripcion")} /></div>
+        </div>
+        <div className="flex justify-end gap-2"><button type="button" className="btn-secundario" onClick={onCerrar}>Cancelar</button><button className="btn-primario" disabled={m.isPending}>Guardar</button></div>
+      </form>
     </Modal>
   );
 }
