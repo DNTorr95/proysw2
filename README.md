@@ -296,7 +296,7 @@ Cada periodo admite un solo informe vigente, así que cada corrida necesita un m
 
 ```bash
 cd backend && mvn test                     # unitarias + integración/seguridad (Testcontainers)
-cd frontend && npm test                    # menú por permisos
+cd frontend && npm test                    # menú por permisos y componentes (Testing Library + jsdom)
 cd rpa-worker && pip install -r requirements-dev.txt && pytest   # trabajador RPA (duplicados, incompletos, falla de plantilla, tiempo)
 cd servicios-ia && SEMANTICA_MOTOR=tfidf pytest                  # OCR, búsqueda, predicción y asistente
 python scripts/prueba_e2e_rpa.py http://localhost   # punta a punta por la API

@@ -12,5 +12,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Las pruebas de componentes (.test.tsx) declaran "@vitest-environment jsdom" en su primera línea
+    setupFiles: ["./src/test/preparar.ts"],
   },
 });
