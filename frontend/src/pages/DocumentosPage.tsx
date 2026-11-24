@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Eye, Trash2 } from "lucide-react";
+import { Download, Eye, Info, Trash2 } from "lucide-react";
 import { abrirDocumento, api, subirArchivo, type Pagina } from "../api/cliente";
 import type { Archivo } from "../api/tipos";
+import { useAuth } from "../auth/AuthContext";
 import { SubirArchivo } from "../components/documentos";
 import { Cargando, Encabezado, ErrorApiAviso, Modal, Paginacion, formatoFechaHora } from "../components/ui";
 import { formatoTamano } from "../lib/estados";
@@ -22,6 +23,7 @@ export default function DocumentosPage() {
   const [pagina, setPagina] = useState(0);
   const [descripcion, setDescripcion] = useState("");
   const [eliminar, setEliminar] = useState<Archivo | null>(null);
+  const [ficha, setFicha] = useState<number | null>(null);
   const [errorDescarga, setErrorDescarga] = useState<unknown>(null);
   const lista = useQuery({
     queryKey: ["documentos", texto, tipoMime, pagina],
@@ -75,6 +77,7 @@ export default function DocumentosPage() {
                       <td className="font-mono text-[11px]" title={a.hashSha256}>{a.hashSha256.substring(0, 16)}…</td>
                       <td>
                         <div className="flex justify-end gap-1">
+                          <button className="rounded p-1.5 hover:bg-slate-100" title="Ficha y descripción" aria-label={`Ficha de ${a.nombreArchivo}`} onClick={() => setFicha(a.id)}><Info className="h-4 w-4" /></button>
                           <button className="rounded p-1.5 hover:bg-slate-100" title="Ver" aria-label="Ver" onClick={() => abrir(a, true)}><Eye className="h-4 w-4" /></button>
                           <button className="rounded p-1.5 hover:bg-slate-100" title="Descargar" aria-label="Descargar" onClick={() => abrir(a, false)}><Download className="h-4 w-4" /></button>
                           <button className="rounded p-1.5 text-red-600 hover:bg-red-50" title="Eliminar" aria-label="Eliminar" onClick={() => setEliminar(a)}><Trash2 className="h-4 w-4" /></button>
@@ -91,6 +94,7 @@ export default function DocumentosPage() {
         )}
       </div>
 
+      {ficha !== null && <FichaDocumento id={ficha} onCerrar={() => setFicha(null)} />}
       {eliminar && (
         <Modal abierto titulo="Eliminar documento" onCerrar={() => setEliminar(null)}>
           <div className="space-y-4">
@@ -104,5 +108,50 @@ export default function DocumentosPage() {
         </Modal>
       )}
     </>
+  );
+}
+
+/** Ficha de un documento (GET /documentos/{id}) con la descripción editable para quien gestiona documentos. */
+function FichaDocumento({ id, onCerrar }: { id: number; onCerrar: () => void }) {
+  const qc = useQueryClient();
+  const { tienePermiso } = useAuth();
+  const puedeEditar = tienePermiso("GESTIONAR_DOCUMENTOS");
+  const doc = useQuery({ queryKey: ["documento", id], queryFn: () => api<Archivo>(`/documentos/${id}`) });
+  const [descripcion, setDescripcion] = useState<string | null>(null);
+  const guardar = useMutation({
+    mutationFn: (d: string) => api<Archivo>(`/documentos/${id}`, { metodo: "PATCH", cuerpo: { descripcion: d.trim() || null } }),
+    onSuccess: (a) => {
+      qc.setQueryData(["documento", id], a);
+      qc.invalidateQueries({ queryKey: ["documentos"] });
+      setDescripcion(null);
+    },
+  });
+  const a = doc.data;
+  return (
+    <Modal abierto titulo="Ficha del documento" onCerrar={onCerrar}>
+      {doc.isLoading ? <Cargando /> : doc.error ? <ErrorApiAviso error={doc.error} /> : a && (
+        <div className="space-y-4">
+          <dl className="grid grid-cols-3 gap-x-3 gap-y-2 text-sm">
+            <dt className="text-slate-500">Nombre</dt><dd className="col-span-2 break-all font-medium">{a.nombreArchivo}</dd>
+            <dt className="text-slate-500">Tipo</dt><dd className="col-span-2">{TIPOS[a.tipoMime] ?? a.tipoMime} · {formatoTamano(a.tamanoBytes)}</dd>
+            <dt className="text-slate-500">Cargado</dt><dd className="col-span-2">{formatoFechaHora(a.fechaCarga)} (usuario #{a.idUsuarioCarga})</dd>
+            <dt className="text-slate-500">Contexto</dt><dd className="col-span-2">{a.idCorrespondencia ? `Correspondencia #${a.idCorrespondencia}` : a.idExpediente ? `Expediente #${a.idExpediente}` : "Documento suelto"}</dd>
+            <dt className="text-slate-500">SHA-256</dt><dd className="col-span-2 break-all font-mono text-[11px]">{a.hashSha256}</dd>
+          </dl>
+          <div>
+            <label className="etiqueta" htmlFor="fdesc">Descripción</label>
+            {puedeEditar ? (
+              <textarea id="fdesc" className="campo" rows={3} maxLength={300} value={descripcion ?? a.descripcion ?? ""} onChange={(e) => setDescripcion(e.target.value)} />
+            ) : <p id="fdesc" className="text-sm">{a.descripcion || "—"}</p>}
+          </div>
+          <ErrorApiAviso error={guardar.error} />
+          {guardar.isSuccess && descripcion === null && <p className="text-sm text-green-700" role="status">Descripción guardada.</p>}
+          <div className="flex justify-end gap-2">
+            <button className="btn-secundario" onClick={onCerrar}>Cerrar</button>
+            {puedeEditar && <button className="btn-primario" disabled={descripcion === null || guardar.isPending} onClick={() => guardar.mutate(descripcion ?? "")}>Guardar descripción</button>}
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
