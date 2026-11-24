@@ -5,7 +5,7 @@ import { NOMBRES_ROL } from "../api/tipos";
 import { Encabezado, formatoFechaHora } from "../components/ui";
 import { menuPara } from "../lib/menu";
 
-/** Inicio / dashboard. En la iteración 1 muestra el perfil y los accesos disponibles; los indicadores llegan con CU-26. */
+/** Inicio para los roles sin el permiso VER_DASHBOARD: perfil y accesos del rol. Con ese permiso, «/» muestra el dashboard (CU-26). */
 export default function InicioPage() {
   const { perfil } = useAuth();
   if (!perfil) return null;
@@ -44,7 +44,7 @@ export default function InicioPage() {
       <div className="tarjeta mt-6 p-5">
         <h2 className="font-semibold">Indicadores institucionales</h2>
         <p className="mt-1 text-sm text-slate-500">
-          El dashboard con trámites, correspondencia, ejecuciones RPA y alertas estará disponible en la iteración 5 (CU-26).
+          El dashboard institucional (trámites, correspondencia, robot RPA, alertas y POA) está disponible para los roles con el permiso «Ver dashboard». Su rol no lo tiene: use los accesos de abajo o consulte con la Dirección de Carrera.
         </p>
       </div>
 
@@ -55,7 +55,7 @@ export default function InicioPage() {
             o.disponible ? (
               <Link key={o.ruta} to={o.ruta} className="btn-secundario">{o.etiqueta}</Link>
             ) : (
-              <span key={o.ruta} className="btn-secundario cursor-default opacity-50" title="Próxima iteración">{o.etiqueta}</span>
+              <span key={o.ruta} className="btn-secundario cursor-default opacity-50" title="Opción no disponible">{o.etiqueta}</span>
             ),
           )}
         </div>
