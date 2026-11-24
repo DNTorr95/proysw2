@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Lock, Pencil, Plus, Unlock, UserX } from "lucide-react";
+import { Eye, KeyRound, Lock, Pencil, Plus, Unlock, UserX } from "lucide-react";
 import { api, type Pagina } from "../api/cliente";
 import { NOMBRES_ROL, type EstadoCuenta, type Rol, type Usuario } from "../api/tipos";
 import { useAuth } from "../auth/AuthContext";
@@ -10,6 +10,7 @@ const COLOR_ESTADO: Record<EstadoCuenta, "verde" | "rojo" | "gris"> = { ACTIVO: 
 
 type Dialogo =
   | { tipo: "crear" }
+  | { tipo: "ficha"; id: number }
   | { tipo: "editar"; usuario: Usuario }
   | { tipo: "estado"; usuario: Usuario; estado: EstadoCuenta }
   | { tipo: "contrasena"; usuario: Usuario }
@@ -74,6 +75,7 @@ export default function UsuariosPage() {
                         <td className="whitespace-nowrap">{formatoFechaHora(u.ultimoAcceso)}</td>
                         <td>
                           <div className="flex justify-end gap-1">
+                            <BotonIcono titulo="Ver ficha" onClick={() => setDialogo({ tipo: "ficha", id: u.id })}><Eye className="h-4 w-4" /></BotonIcono>
                             <BotonIcono titulo="Editar" onClick={() => setDialogo({ tipo: "editar", usuario: u })}><Pencil className="h-4 w-4" /></BotonIcono>
                             <BotonIcono titulo="Restablecer contraseña" onClick={() => setDialogo({ tipo: "contrasena", usuario: u })}><KeyRound className="h-4 w-4" /></BotonIcono>
                             {u.estado !== "ACTIVO" ? (
@@ -102,6 +104,7 @@ export default function UsuariosPage() {
         <FormularioUsuario usuario={dialogo.tipo === "editar" ? dialogo.usuario : undefined} roles={roles.data ?? []}
           esPropio={dialogo.tipo === "editar" && dialogo.usuario.id === perfil?.id} onCerrar={() => setDialogo(null)} />
       )}
+      {dialogo?.tipo === "ficha" && <FichaUsuario id={dialogo.id} onEditar={(u) => setDialogo({ tipo: "editar", usuario: u })} onCerrar={() => setDialogo(null)} />}
       {dialogo?.tipo === "estado" && <DialogoEstado usuario={dialogo.usuario} estado={dialogo.estado} onCerrar={() => setDialogo(null)} />}
       {dialogo?.tipo === "contrasena" && <DialogoContrasena usuario={dialogo.usuario} onCerrar={() => setDialogo(null)} />}
     </>
@@ -223,6 +226,42 @@ function DialogoContrasena({ usuario, onCerrar }: { usuario: Usuario; onCerrar: 
           <button className="btn-primario" disabled={!nueva || m.isPending} onClick={() => m.mutate()}>Restablecer</button>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+/** Ficha de la cuenta con los datos actuales del servidor (GET /usuarios/{id}). */
+function FichaUsuario({ id, onEditar, onCerrar }: { id: number; onEditar: (u: Usuario) => void; onCerrar: () => void }) {
+  const u = useQuery({ queryKey: ["usuario", id], queryFn: () => api<Usuario>(`/usuarios/${id}`) });
+  const d = u.data;
+  const fila = (etiqueta: string, valor: React.ReactNode) => (
+    <>
+      <dt className="text-slate-500">{etiqueta}</dt>
+      <dd className="col-span-2">{valor ?? "—"}</dd>
+    </>
+  );
+  return (
+    <Modal abierto titulo={d ? `Cuenta ${d.nombreUsuario}` : "Cuenta de usuario"} onCerrar={onCerrar}>
+      {u.isLoading ? <Cargando /> : u.error ? <ErrorApiAviso error={u.error} /> : d && (
+        <div className="space-y-4">
+          <dl className="grid grid-cols-3 gap-x-3 gap-y-2 text-sm">
+            {fila("Nombre", `${d.nombres} ${d.apellidos}`)}
+            {fila("CI", d.ci)}
+            {fila("Rol", NOMBRES_ROL[d.rol] ?? d.rol)}
+            {fila("Cargo y área", [d.cargo, d.area].filter(Boolean).join(" · ") || null)}
+            {fila("Correo", d.correo)}
+            {fila("Teléfono", d.telefono)}
+            {fila("Estado", <Insignia color={COLOR_ESTADO[d.estado]}>{d.estado}</Insignia>)}
+            {fila("Intentos fallidos", d.intentosFallidos)}
+            {fila("Último acceso", d.ultimoAcceso ? formatoFechaHora(d.ultimoAcceso) : "Nunca")}
+            {fila("Creada", formatoFechaHora(d.fechaCreacion))}
+          </dl>
+          <div className="flex justify-end gap-2">
+            <button className="btn-secundario" onClick={onCerrar}>Cerrar</button>
+            <button className="btn-primario" onClick={() => onEditar(d)}><Pencil className="h-4 w-4" /> Editar</button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }
