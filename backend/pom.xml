@@ -23,6 +23,7 @@
         <jjwt.version>0.12.6</jjwt.version>
         <springdoc.version>2.8.13</springdoc.version>
         <statemachine.version>4.0.1</statemachine.version>
+        <jacoco.version>0.8.12</jacoco.version>
     </properties>
 
     <dependencies>
@@ -147,6 +148,23 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <!-- Cobertura de pruebas: cada "mvn test" deja el informe en target/site/jacoco (HTML, XML y CSV) -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <id>agente</id>
+                        <goals><goal>prepare-agent</goal></goals>
+                    </execution>
+                    <execution>
+                        <id>informe</id>
+                        <phase>test</phase>
+                        <goals><goal>report</goal></goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

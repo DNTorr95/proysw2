@@ -314,6 +314,10 @@ Las pruebas de integración levantan PostgreSQL 16 con Testcontainers, lo que re
 PRUEBAS_DB_URL=jdbc:postgresql://localhost:5432/p25test PRUEBAS_DB_USER=postgres PRUEBAS_DB_PASSWORD=... mvn test
 ```
 
+Sin Docker ni `PRUEBAS_DB_URL`, las pruebas de integración se **omiten** (no fallan): revise el número de pruebas omitidas en el resumen de Maven.
+
+Cada `mvn test` genera además el informe de cobertura de JaCoCo en `backend/target/site/jacoco/` (`index.html`, `jacoco.xml` y `jacoco.csv`).
+
 ## Estructura
 
 ```
