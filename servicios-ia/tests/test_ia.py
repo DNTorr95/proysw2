@@ -123,6 +123,16 @@ def test_asistente_reconoce_intenciones_nuevas(pregunta, intencion):
     assert InterpreteReglas().interpretar(pregunta).intencion == intencion
 
 
+@pytest.mark.parametrize("pregunta", [
+    "resumen académico del periodo",
+    "¿Cómo va el semestre?",
+    "dame el resumen del periodo actual",
+    "planificación académica",
+])
+def test_asistente_reconoce_el_resumen_academico_con_otras_frases(pregunta):
+    assert InterpreteReglas().interpretar(pregunta).intencion == "RESUMEN_ACADEMICO"
+
+
 @pytest.mark.parametrize("pregunta,intencion", [
     ("cuantos tramites estan venzidos", "TRAMITES_VENCIDOS"),
     ("que requisitoz piden para un reingreso", "REQUISITOS_TRAMITE"),
