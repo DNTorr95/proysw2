@@ -112,6 +112,48 @@ def test_asistente_extrae_entidades():
     assert r.entidades == {"numeroTramite": "TRM-2026-0061", "mes": 10, "anio": 2026}
 
 
+@pytest.mark.parametrize("pregunta,intencion", [
+    ("¿En qué estado está el oficio DCP-REC-2026-0012?", "ESTADO_CORRESPONDENCIA"),
+    ("trámites del estudiante 21901222", "TRAMITES_ESTUDIANTE"),
+    ("¿Cuántos grupos sin docente hay en el periodo?", "RESUMEN_ACADEMICO"),
+    ("¿Qué talleres o eventos vienen?", "EVENTOS_PROXIMOS"),
+    ("¿Cuántos oficios recibimos en septiembre?", "CORRESPONDENCIA_PERIODO"),
+])
+def test_asistente_reconoce_intenciones_nuevas(pregunta, intencion):
+    assert InterpreteReglas().interpretar(pregunta).intencion == intencion
+
+
+@pytest.mark.parametrize("pregunta,intencion", [
+    ("cuantos tramites estan venzidos", "TRAMITES_VENCIDOS"),
+    ("que requisitoz piden para un reingreso", "REQUISITOS_TRAMITE"),
+    ("como va el avanse del POA", "AVANCE_POA"),
+    ("hay alertaz abiertas", "ALERTAS"),
+])
+def test_asistente_tolera_errores_de_escritura(pregunta, intencion):
+    assert InterpreteReglas().interpretar(pregunta).intencion == intencion
+
+
+@pytest.mark.parametrize("pregunta,tipo", [
+    ("¿Qué necesito para un reingreso?", "reincorporacion"),
+    ("documentos para el certificado de notas", "record"),
+    ("requisitos para cambio de paralelo", "cambio de grupo"),
+    ("¿qué piden para un traslado?", "traspaso"),
+    ("requisitos para congelar el semestre", "licencia"),
+])
+def test_asistente_reconoce_sinonimos_de_tipos_de_tramite(pregunta, tipo):
+    r = InterpreteReglas().interpretar(pregunta)
+    assert r.intencion == "REQUISITOS_TRAMITE"
+    assert r.entidades["tipoTramite"] == tipo
+
+
+def test_asistente_extrae_registro_y_codigo_de_oficio():
+    r = InterpreteReglas().interpretar("seguimiento del oficio dcp-emi-2026-7 y trámites del registro 22001481")
+    assert r.entidades["codigoCorrespondencia"] == "DCP-EMI-2026-7"
+    assert r.entidades["registro"] == "22001481"
+    # un año o un número de trámite no se confunden con un registro
+    assert "registro" not in InterpreteReglas().interpretar("estado del trámite TRM-2026-0061 de 2026").entidades
+
+
 # ---------------------------------------------------------------- API y arquitectura
 
 @pytest.fixture()
