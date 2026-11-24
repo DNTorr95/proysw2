@@ -97,6 +97,7 @@ function Titulados() {
   const qc = useQueryClient();
   const gestiona = useAuth().tienePermiso("GESTIONAR_TITULADOS");
   const [nuevo, setNuevo] = useState(false);
+  const [editando, setEditando] = useState<Titulado | null>(null);
   const lista = useQuery({ queryKey: ["titulados"], queryFn: () => api<Titulado[]>("/titulados") });
   return (
     <div className="tarjeta">
@@ -106,35 +107,47 @@ function Titulados() {
       </div>
       {lista.isLoading ? <Cargando /> : (
         <table className="tabla">
-          <thead><tr><th>Estudiante</th><th>Modalidad</th><th>Trabajo</th><th>Defensa</th><th>Gestión</th><th>Diploma</th></tr></thead>
+          <thead><tr><th>Estudiante</th><th>Modalidad</th><th>Trabajo</th><th>Defensa</th><th>Gestión</th><th>Diploma</th>{gestiona && <th><span className="sr-only">Acciones</span></th>}</tr></thead>
           <tbody className="divide-y divide-slate-100">
             {lista.data?.map((t) => (
               <tr key={t.id}><td>{t.estudiante}<div className="text-xs text-slate-500">{t.registro}</div></td><td>{MODALIDADES[t.modalidad] ?? t.modalidad}</td>
-                <td className="max-w-xs text-xs">{t.tituloTrabajo ?? "—"}</td><td>{formatoFecha(t.fechaDefensa)}</td><td>{t.gestion}</td><td className="text-xs">{t.nroDiploma ?? "—"}</td></tr>
+                <td className="max-w-xs text-xs">{t.tituloTrabajo ?? "—"}</td><td>{formatoFecha(t.fechaDefensa)}</td><td>{t.gestion}</td><td className="text-xs">{t.nroDiploma ?? "—"}</td>
+                {gestiona && <td><button className="btn-secundario px-2 py-1 text-xs" onClick={() => setEditando(t)} aria-label={`Editar titulación de ${t.estudiante}`}><Pencil className="h-3.5 w-3.5" /> Editar</button></td>}</tr>
             ))}
           </tbody>
         </table>
       )}
-      {nuevo && <NuevoTitulado onCerrar={() => { setNuevo(false); qc.invalidateQueries({ queryKey: ["titulados"] }); }} />}
+      {(nuevo || editando) && <FormTitulado titulado={editando ?? undefined} onCerrar={() => { setNuevo(false); setEditando(null); qc.invalidateQueries({ queryKey: ["titulados"] }); }} />}
     </div>
   );
 }
 
-function NuevoTitulado({ onCerrar }: { onCerrar: () => void }) {
+/** Registrar (POST) o corregir (PUT /titulados/{id}) una titulación; al corregir, el estudiante no cambia. */
+function FormTitulado({ titulado, onCerrar }: { titulado?: Titulado; onCerrar: () => void }) {
   const [estudiante, setEstudiante] = useState<Estudiante | null>(null);
-  const trabajos = useQuery({ queryKey: ["trabajos-de", estudiante?.id], queryFn: () => api<TrabajoGrado[]>("/trabajos-grado", { params: { texto: estudiante?.nombreCompleto } }), enabled: !!estudiante });
-  const propios = trabajos.data?.filter((t) => t.idEstudiante === estudiante?.id) ?? [];
-  const [f, setF] = useState({ idTrabajo: "", modalidad: "TESIS", gestion: String(new Date().getFullYear()), fechaDefensa: "", nroDiploma: "" });
+  const idEstudiante = titulado?.idEstudiante ?? estudiante?.id;
+  const nombre = titulado?.estudiante ?? estudiante?.nombreCompleto;
+  const trabajos = useQuery({ queryKey: ["trabajos-de", idEstudiante], queryFn: () => api<TrabajoGrado[]>("/trabajos-grado", { params: { texto: nombre } }), enabled: !!idEstudiante });
+  const propios = trabajos.data?.filter((t) => t.idEstudiante === idEstudiante) ?? [];
+  const [f, setF] = useState({
+    idTrabajo: titulado?.idTrabajo ? String(titulado.idTrabajo) : "", modalidad: titulado?.modalidad ?? "TESIS",
+    gestion: String(titulado?.gestion ?? new Date().getFullYear()), fechaDefensa: titulado?.fechaDefensa ?? "", nroDiploma: titulado?.nroDiploma ?? "",
+  });
   const m = useMutation({
-    mutationFn: () => api("/titulados", { metodo: "POST", cuerpo: { ...f, idEstudiante: estudiante?.id, idTrabajo: f.idTrabajo ? Number(f.idTrabajo) : null, gestion: Number(f.gestion) } }),
+    mutationFn: () => {
+      const cuerpo = { ...f, idEstudiante, idTrabajo: f.idTrabajo ? Number(f.idTrabajo) : null, gestion: Number(f.gestion) };
+      return titulado ? api(`/titulados/${titulado.id}`, { metodo: "PUT", cuerpo }) : api("/titulados", { metodo: "POST", cuerpo });
+    },
     onSuccess: onCerrar,
   });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
   return (
-    <Modal abierto titulo="Registrar titulación" onCerrar={onCerrar} ancho="max-w-xl">
+    <Modal abierto titulo={titulado ? `Editar titulación de ${titulado.estudiante}` : "Registrar titulación"} onCerrar={onCerrar} ancho="max-w-xl">
       <div className="space-y-3">
         <ErrorApiAviso error={m.error} />
-        <BuscadorEstudiante seleccionado={estudiante} onSeleccionar={setEstudiante} />
+        {titulado
+          ? <p className="text-sm"><strong>{titulado.estudiante}</strong> · {titulado.registro}</p>
+          : <BuscadorEstudiante seleccionado={estudiante} onSeleccionar={setEstudiante} />}
         <div className="grid grid-cols-2 gap-3">
           <div><label className="etiqueta" htmlFor="mod">Modalidad</label><select id="mod" className="campo" value={f.modalidad} onChange={set("modalidad")}>{Object.entries(MODALIDADES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
           <div><label className="etiqueta" htmlFor="tra">Trabajo de grado</label><select id="tra" className="campo" value={f.idTrabajo} onChange={set("idTrabajo")}><option value="">Ninguno</option>{propios.map((t) => <option key={t.id} value={t.id}>{t.titulo}</option>)}</select></div>
@@ -142,8 +155,8 @@ function NuevoTitulado({ onCerrar }: { onCerrar: () => void }) {
           <div><label className="etiqueta" htmlFor="gt">Gestión</label><input id="gt" type="number" className="campo" value={f.gestion} onChange={set("gestion")} /></div>
           <div className="col-span-2"><label className="etiqueta" htmlFor="dip">N.º de diploma</label><input id="dip" className="campo" value={f.nroDiploma} onChange={set("nroDiploma")} /></div>
         </div>
-        <p className="text-xs text-slate-500">Al registrar, el estudiante pasa al estado TITULADO.</p>
-        <div className="flex justify-end gap-2"><button className="btn-secundario" onClick={onCerrar}>Cancelar</button><button className="btn-primario" disabled={!estudiante || !f.fechaDefensa || m.isPending} onClick={() => m.mutate()}>Registrar</button></div>
+        {!titulado && <p className="text-xs text-slate-500">Al registrar, el estudiante pasa al estado TITULADO.</p>}
+        <div className="flex justify-end gap-2"><button className="btn-secundario" onClick={onCerrar}>Cancelar</button><button className="btn-primario" disabled={!idEstudiante || !f.fechaDefensa || m.isPending} onClick={() => m.mutate()}>{titulado ? "Guardar" : "Registrar"}</button></div>
       </div>
     </Modal>
   );
