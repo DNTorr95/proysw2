@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Save, Undo2 } from "lucide-react";
+import { Pencil, Save, Undo2 } from "lucide-react";
 import { api } from "../api/cliente";
 import { NOMBRES_ROL, type Permiso, type Rol } from "../api/tipos";
 import { useAuth } from "../auth/AuthContext";
@@ -16,6 +16,7 @@ export default function RolesPage() {
   const permisos = useQuery({ queryKey: ["permisos"], queryFn: () => api<Permiso[]>("/permisos") });
   const [idRol, setIdRol] = useState<number | null>(null);
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
+  const [descripcion, setDescripcion] = useState<string | null>(null);
 
   const rol = roles.data?.find((r) => r.id === idRol) ?? roles.data?.[0];
   useEffect(() => {
@@ -33,6 +34,14 @@ export default function RolesPage() {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["roles"] });
       await recargarPerfil();
+    },
+  });
+
+  const guardarDescripcion = useMutation({
+    mutationFn: (d: string) => api<Rol>(`/roles/${rol!.id}`, { metodo: "PUT", cuerpo: { descripcion: d.trim() } }),
+    onSuccess: async () => {
+      setDescripcion(null);
+      await qc.invalidateQueries({ queryKey: ["roles"] });
     },
   });
 
@@ -55,7 +64,7 @@ export default function RolesPage() {
       <div className="mb-4 flex flex-wrap gap-2" role="tablist">
         {roles.data!.map((r) => (
           <button key={r.id} role="tab" aria-selected={r.id === rol.id}
-            onClick={() => { setIdRol(r.id); guardar.reset(); }}
+            onClick={() => { setIdRol(r.id); guardar.reset(); setDescripcion(null); guardarDescripcion.reset(); }}
             className={r.id === rol.id ? "btn-primario" : "btn-secundario"}>
             {NOMBRES_ROL[r.nombre] ?? r.nombre}
             <span className="rounded bg-black/10 px-1.5 text-xs">{r.usuariosActivos} usuario(s)</span>
@@ -64,7 +73,25 @@ export default function RolesPage() {
       </div>
 
       <div className="tarjeta p-5">
-        <p className="text-sm text-slate-600">{rol.descripcion}</p>
+        {descripcion === null ? (
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm text-slate-600">{rol.descripcion}</p>
+            <button className="btn-secundario shrink-0 px-2 py-1 text-xs" onClick={() => { guardarDescripcion.reset(); setDescripcion(rol.descripcion ?? ""); }}>
+              <Pencil className="h-3.5 w-3.5" /> Editar descripción
+            </button>
+          </div>
+        ) : (
+          <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); guardarDescripcion.mutate(descripcion); }}>
+            <label className="etiqueta" htmlFor="rdesc">Descripción del rol</label>
+            <input id="rdesc" className="campo" required maxLength={200} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
+            <ErrorApiAviso error={guardarDescripcion.error} />
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn-secundario" onClick={() => setDescripcion(null)}>Cancelar</button>
+              <button className="btn-primario" disabled={!descripcion.trim() || guardarDescripcion.isPending}>Guardar descripción</button>
+            </div>
+          </form>
+        )}
+        {guardarDescripcion.isSuccess && descripcion === null && <div className="mt-2"><Aviso tipo="exito">Descripción actualizada.</Aviso></div>}
         <div className="mt-3 space-y-2">
           <ErrorApiAviso error={guardar.error} />
           {guardar.isSuccess && !cambios && <Aviso tipo="exito">Permisos actualizados y registrados en la auditoría.</Aviso>}
