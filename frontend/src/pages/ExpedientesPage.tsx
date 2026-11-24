@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FolderLock, FolderOpen, Link2, Plus } from "lucide-react";
+import { FolderLock, FolderOpen, Link2, Pencil, Plus } from "lucide-react";
 import { api, subirArchivo, type Pagina } from "../api/cliente";
 import type { Estudiante, Expediente, ExpedienteDetalle, Tramite } from "../api/tipos";
 import { useAuth } from "../auth/AuthContext";
@@ -104,6 +104,7 @@ function DetalleExpediente({ id, onCerrar }: { id: number; onCerrar: () => void 
   const det = useQuery({ queryKey: ["expediente", id], queryFn: () => api<ExpedienteDetalle>(`/expedientes/${id}`) });
   const [idTramite, setIdTramite] = useState("");
   const [motivo, setMotivo] = useState("");
+  const [edicion, setEdicion] = useState<{ titulo: string; descripcion: string } | null>(null);
   const refrescar = () => { qc.invalidateQueries({ queryKey: ["expediente", id] }); qc.invalidateQueries({ queryKey: ["expedientes"] }); };
   const x = det.data?.expediente;
 
@@ -115,6 +116,11 @@ function DetalleExpediente({ id, onCerrar }: { id: number; onCerrar: () => void 
   const vincular = useMutation({
     mutationFn: () => api(`/expedientes/${id}/tramites`, { metodo: "POST", cuerpo: { idTramite: Number(idTramite) } }),
     onSuccess: () => { setIdTramite(""); refrescar(); },
+  });
+  const editar = useMutation({
+    mutationFn: (d: { titulo: string; descripcion: string }) =>
+      api(`/expedientes/${id}`, { metodo: "PUT", cuerpo: { titulo: d.titulo.trim(), descripcion: d.descripcion.trim() || null } }),
+    onSuccess: () => { setEdicion(null); refrescar(); },
   });
   const estado = useMutation({
     mutationFn: (nuevo: string) => api(`/expedientes/${id}/estado`, { metodo: "PATCH", cuerpo: { estado: nuevo, motivo } }),
@@ -130,9 +136,26 @@ function DetalleExpediente({ id, onCerrar }: { id: number; onCerrar: () => void 
         <div className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
             <span>{x.estudiante ? `${x.estudiante} · ${x.registro}` : "Sin estudiante asociado"} · Abierto el {formatoFecha(x.fechaApertura)}</span>
-            <Insignia color={abierto ? "verde" : "gris"}>{x.estado}</Insignia>
+            <span className="flex items-center gap-2">
+              {gestiona && abierto && !edicion && (
+                <button className="btn-secundario px-2 py-1 text-xs" onClick={() => { editar.reset(); setEdicion({ titulo: x.titulo, descripcion: x.descripcion ?? "" }); }}>
+                  <Pencil className="h-3.5 w-3.5" /> Editar datos
+                </button>
+              )}
+              <Insignia color={abierto ? "verde" : "gris"}>{x.estado}</Insignia>
+            </span>
           </div>
-          {x.descripcion && <p className="text-sm">{x.descripcion}</p>}
+          {edicion ? (
+            <form className="space-y-3 rounded-md border border-slate-200 p-3" onSubmit={(e) => { e.preventDefault(); editar.mutate(edicion); }}>
+              <ErrorApiAviso error={editar.error} />
+              <div><label className="etiqueta" htmlFor="etit">Título</label><input id="etit" className="campo" required maxLength={200} value={edicion.titulo} onChange={(e) => setEdicion({ ...edicion, titulo: e.target.value })} /></div>
+              <div><label className="etiqueta" htmlFor="edes">Descripción</label><textarea id="edes" className="campo" rows={3} maxLength={4000} value={edicion.descripcion} onChange={(e) => setEdicion({ ...edicion, descripcion: e.target.value })} /></div>
+              <div className="flex justify-end gap-2">
+                <button type="button" className="btn-secundario" onClick={() => setEdicion(null)}>Cancelar</button>
+                <button className="btn-primario" disabled={!edicion.titulo.trim() || editar.isPending}>Guardar</button>
+              </div>
+            </form>
+          ) : x.descripcion && <p className="text-sm">{x.descripcion}</p>}
 
           <section>
             <h3 className="mb-2 font-semibold">Trámites</h3>
