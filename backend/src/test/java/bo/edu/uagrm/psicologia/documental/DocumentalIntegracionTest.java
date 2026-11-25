@@ -1,12 +1,16 @@
 package bo.edu.uagrm.psicologia.documental;
 
 import bo.edu.uagrm.psicologia.PruebaIntegracionBase;
+import bo.edu.uagrm.psicologia.ocr.ExtraccionOcr;
+import bo.edu.uagrm.psicologia.ocr.ExtraccionOcrRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.Map;
@@ -27,6 +31,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DocumentalIntegracionTest extends PruebaIntegracionBase {
 
     private static final byte[] PDF = "%PDF-1.4 oficio de prueba".getBytes(StandardCharsets.US_ASCII);
+
+    @Autowired
+    private ExtraccionOcrRepository extraccionesOcr;
 
     private int crearOficio(String token, String tipo) throws Exception {
         String cuerpo = json.writeValueAsString(Map.of("tipo", tipo, "asunto", "Solicitud de ambientes",
@@ -134,6 +141,38 @@ class DocumentalIntegracionTest extends PruebaIntegracionBase {
                 .andExpect(status().isForbidden());
         mvc.perform(delete("/api/documentos/" + id).header("Authorization", bearer(apoyo))).andExpect(status().isNoContent());
         mvc.perform(get("/api/documentos/" + id).header("Authorization", bearer(apoyo))).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void documentoConTextoOcrSePuedeEliminar() throws Exception {
+        String apoyo = tokenApoyo();
+        String r = mvc.perform(multipart("/api/documentos")
+                        .file(new MockMultipartFile("archivo", "acta escaneada.pdf", "application/pdf", PDF))
+                        .header("Authorization", bearer(apoyo)))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        int id = json.readTree(r).get("id").asInt();
+        ExtraccionOcr ocr = new ExtraccionOcr(id);
+        ocr.registrarExtraccion("Acta de reunión del Consejo de Carrera", new BigDecimal("91.50"));
+        extraccionesOcr.save(ocr);
+
+        mvc.perform(delete("/api/documentos/" + id).header("Authorization", bearer(apoyo))).andExpect(status().isNoContent());
+        mvc.perform(get("/api/documentos/" + id).header("Authorization", bearer(apoyo))).andExpect(status().isNotFound());
+        assertThat(extraccionesOcr.findByIdArchivo(id)).isEmpty();
+    }
+
+    @Test
+    void archivoDeTrabajoDeGradoNoSePuedeEliminar() throws Exception {
+        String apoyo = tokenApoyo();
+        String r = mvc.perform(multipart("/api/trabajos-grado/2/archivo")
+                        .file(new MockMultipartFile("archivo", "tesis.pdf", "application/pdf", PDF))
+                        .header("Authorization", bearer(apoyo)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        int idArchivo = json.readTree(r).get("archivo").get("id").asInt();
+
+        mvc.perform(delete("/api/documentos/" + idArchivo).header("Authorization", bearer(apoyo)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.mensaje").value("El documento es el archivo de un trabajo de grado y no puede eliminarse"));
+        mvc.perform(get("/api/documentos/" + idArchivo).header("Authorization", bearer(apoyo))).andExpect(status().isOk());
     }
 
     @Test
