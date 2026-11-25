@@ -8,6 +8,8 @@ import bo.edu.uagrm.psicologia.comun.web.Pagina;
 import bo.edu.uagrm.psicologia.documental.dto.DocumentalDtos.ArchivoDto;
 import bo.edu.uagrm.psicologia.documental.modelo.ArchivoAdjunto;
 import bo.edu.uagrm.psicologia.documental.repositorio.ArchivoAdjuntoRepository;
+import bo.edu.uagrm.psicologia.institucional.repositorio.TrabajoGradoRepository;
+import bo.edu.uagrm.psicologia.ocr.ExtraccionOcrRepository;
 import bo.edu.uagrm.psicologia.seguridad.servicio.UsuarioActual;
 import bo.edu.uagrm.psicologia.seguridad.servicio.UsuarioAutenticado;
 import bo.edu.uagrm.psicologia.tramites.modelo.DocumentoTramite;
@@ -36,13 +38,18 @@ public class DocumentoService {
 
     private final ArchivoAdjuntoRepository archivos;
     private final DocumentoTramiteRepository documentosTramite;
+    private final TrabajoGradoRepository trabajosGrado;
+    private final ExtraccionOcrRepository extraccionesOcr;
     private final AlmacenamientoService almacenamiento;
     private final AuditoriaService auditoria;
 
     public DocumentoService(ArchivoAdjuntoRepository archivos, DocumentoTramiteRepository documentosTramite,
+                            TrabajoGradoRepository trabajosGrado, ExtraccionOcrRepository extraccionesOcr,
                             AlmacenamientoService almacenamiento, AuditoriaService auditoria) {
         this.archivos = archivos;
         this.documentosTramite = documentosTramite;
+        this.trabajosGrado = trabajosGrado;
+        this.extraccionesOcr = extraccionesOcr;
         this.almacenamiento = almacenamiento;
         this.auditoria = auditoria;
     }
@@ -125,6 +132,12 @@ public class DocumentoService {
         if (documentosTramite.existsByArchivoId(id)) {
             throw new NegocioException(HttpStatus.CONFLICT, "El documento está registrado como requisito de un trámite y no puede eliminarse");
         }
+        if (trabajosGrado.existsByArchivoId(id)) {
+            throw new NegocioException(HttpStatus.CONFLICT, "El documento es el archivo de un trabajo de grado y no puede eliminarse");
+        }
+        // El texto extraído por OCR se obtuvo de este archivo: sin el archivo no tiene sentido conservarlo
+        extraccionesOcr.findByIdArchivo(id).ifPresent(extraccionesOcr::delete);
+        extraccionesOcr.flush();
         archivos.delete(a);
         String ruta = a.getRuta();
         // El archivo físico se borra solo si la transacción se confirma

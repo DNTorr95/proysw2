@@ -17,4 +17,6 @@ public interface TrabajoGradoRepository extends JpaRepository<TrabajoGrado, Inte
             """)
     java.util.List<TrabajoGrado> buscar(@org.springframework.data.repository.query.Param("texto") String texto,
                                         @org.springframework.data.repository.query.Param("gestion") Integer gestion);
+
+    boolean existsByArchivoId(Integer idArchivo);
 }
